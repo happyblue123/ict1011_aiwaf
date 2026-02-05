@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Response, Request, HTTPException
 from pydantic import BaseModel
+from typing import Literal, Optional
 from urllib.parse import urljoin, urlparse
 
 from app.controllers.auth_controller import (
@@ -17,6 +18,7 @@ from app.services.crawler_for_any_website import AuthenticatedCrawler
 
 from app.services.train_hybrid_ai import main as train_hybrid_main
 
+from app.controllers.policy_controller import PolicyController
 
 router = APIRouter()
 
@@ -32,6 +34,13 @@ class SetupWAFRequest(BaseModel):
     username: str
     password: str
     login_payload: Optional[Dict[str, Any]] = None
+
+class PolicyRuleCreate(BaseModel):
+    list_type: Literal["whitelist", "blacklist"]
+    ip_address: str
+    reason: Optional[str] = None
+    created_by: Optional[str] = None
+    expires_at: Optional[str] = None
 
 @router.post("/login")
 def login(payload: LoginRequest, request: Request, response: Response):
@@ -129,3 +138,15 @@ def get_logs(
 @router.get("/filters")
 def filters():
     return LogsController.get_attack_types()
+
+router.get("/policy/entries")
+def list_policy_entries(list_type: Optional[str] = None):
+    return PolicyController.list_rules(list_type)
+
+@router.post("/policy/entries")
+def create_policy_entry(payload: PolicyRuleCreate):
+    return PolicyController.create_rule(payload.model_dump())
+
+@router.delete("/policy/entries/{rule_id}")
+def delete_policy_entry(rule_id: int):
+    return PolicyController.delete_rule(rule_id)

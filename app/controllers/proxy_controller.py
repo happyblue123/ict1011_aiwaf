@@ -6,11 +6,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 
 from app.waf.engine import WAFEngine
-from app.waf.decisions import Action
+from app.waf.decisions import Action, Decision
 from app.settings import settings
 from app.proxy.normalization import NormalizedRequest, safe_unquote, normalize_path, normalize_body_text
 from app.waf.ai_features import extract_features
 from app.waf.ai_dataset import append_request_row as append_baseline
+from app.models.policy_model import PolicyModel
 
 router = APIRouter()
 waf = WAFEngine()
@@ -80,8 +81,15 @@ async def handle_all(request: Request, path: str):
         body_text=body_text
     )
 
-    # ===== WAF DECISION =====
-    decision = waf.evaluate(req_norm)
+    # ===== WAF DECISION/POLICY DECISION=====
+    policy_match = PolicyModel.get_policy_for_ip(req_norm.client_ip)
+    if policy_match:
+        if policy_match["list_type"] == "whitelist":
+            decision = Decision(Action.ALLOW, [f"IP_ALLOWLIST:{policy_match.get('reason') or 'manual'}"])
+        else:
+            decision = Decision(Action.BLOCK, [f"IP_BLOCKLIST:{policy_match.get('reason') or 'manual'}"])
+    else:
+        decision = waf.evaluate(req_norm)
     effective_action = decision.action
 
     if settings.WAF_MODE == "shadow" and effective_action != Action.ALLOW:

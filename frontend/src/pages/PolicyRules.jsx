@@ -1,39 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Ban, CheckCircle2, Shield, TimerReset, Plus, Trash2 } from "lucide-react";
 
 const initialEntries = {
-  whitelist: [
-    {
-      id: "whitelist-1",
-      ip: "203.0.113.24",
-      reason: "Corporate VPN exit",
-      addedBy: "SOC Analyst",
-      expires: "Never",
-    },
-    {
-      id: "whitelist-2",
-      ip: "198.51.100.15",
-      reason: "Payment processor callback",
-      addedBy: "WAF Admin",
-      expires: "2025-02-01",
-    },
-  ],
-  blacklist: [
-    {
-      id: "blacklist-1",
-      ip: "45.33.32.156",
-      reason: "Credential stuffing campaign",
-      addedBy: "AI Auto-block",
-      expires: "2024-12-31",
-    },
-    {
-      id: "blacklist-2",
-      ip: "192.0.2.88",
-      reason: "OWASP CRS match",
-      addedBy: "SOC Analyst",
-      expires: "2024-11-15",
-    },
-  ],
+  whitelist: [],
+  blacklist: [],
 };
 
 const suggestions = [
@@ -75,6 +45,8 @@ export default function PolicyRules() {
     expires: "",
   });
   const [entries, setEntries] = useState(initialEntries);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const summary = useMemo(
     () => ({
@@ -96,6 +68,56 @@ export default function PolicyRules() {
     setFormValues({ ip: "", reason: "", expires: "" });
   };
 
+  const formatDate = (value) => {
+    if (!value) {
+      return "Never";
+    }
+    if (typeof value === "string") {
+      return value.split("T")[0];
+    }
+    if (value instanceof Date) {
+      return value.toISOString().split("T")[0];
+    }
+    return "Never";
+  };
+
+  const normalizeEntries = (apiEntries) => {
+    const grouped = { whitelist: [], blacklist: [] };
+    (apiEntries || []).forEach((entry) => {
+      const listKey = entry.list_type === "whitelist" ? "whitelist" : "blacklist";
+      grouped[listKey].push({
+        id: entry.rule_id,
+        ip: entry.ip_address,
+        reason: entry.reason || "Manual entry",
+        addedBy: entry.created_by || "System",
+        expires: formatDate(entry.expires_at),
+      });
+    });
+    return grouped;
+  };
+
+  useEffect(() => {
+    const fetchEntries = async () => {
+      setLoading(true);
+      setErrorMessage("");
+      try {
+        const response = await fetch("/api/policy/entries", { credentials: "include" });
+        if (!response.ok) {
+          throw new Error("Failed to load policy rules.");
+        }
+        const data = await response.json();
+        setEntries(normalizeEntries(data.entries));
+      } catch (error) {
+        setErrorMessage(error.message || "Failed to load policy rules.");
+        setEntries(initialEntries);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEntries();
+  }, []);
+
   const handleSuggestionApply = (suggestion) => {
     if (!suggestion?.prefill) {
       return;
@@ -113,27 +135,69 @@ export default function PolicyRules() {
     if (!formValues.ip.trim()) {
       return;
     }
+    setErrorMessage("");
 
-    const newEntry = {
-      id: `${activeList}-${Date.now()}`,
-      ip: formValues.ip.trim(),
+    const payload = {
+      list_type: activeList,
+      ip_address: formValues.ip.trim(),
       reason: formValues.reason.trim() || "Manual entry",
-      addedBy: "Admin User",
-      expires: formValues.expires.trim() || "Never",
+      created_by: "Admin User",
+      expires_at: formValues.expires.trim() || null,
     };
 
-    setEntries((prev) => ({
-      ...prev,
-      [activeList]: [newEntry, ...prev[activeList]],
-    }));
-    resetForm();
+    fetch("/api/policy/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to add policy rule.");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const entry = data.entry;
+        const newEntry = {
+          id: entry.rule_id,
+          ip: entry.ip_address,
+          reason: entry.reason || "Manual entry",
+          addedBy: entry.created_by || "System",
+          expires: formatDate(entry.expires_at),
+        };
+        setEntries((prev) => ({
+          ...prev,
+          [activeList]: [newEntry, ...prev[activeList]],
+        }));
+        resetForm();
+      })
+      .catch((error) => {
+        setErrorMessage(error.message || "Failed to add policy rule.");
+      });
   };
 
   const handleRemove = (listKey, id) => {
-    setEntries((prev) => ({
-      ...prev,
-      [listKey]: prev[listKey].filter((entry) => entry.id !== id),
-    }));
+    setErrorMessage("");
+    fetch(`/api/policy/entries/${id}`, { method: "DELETE", credentials: "include" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to remove policy rule.");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (!data.deleted) {
+          throw new Error("Policy rule could not be deleted.");
+        }
+        setEntries((prev) => ({
+          ...prev,
+          [listKey]: prev[listKey].filter((entry) => entry.id !== id),
+        }));
+      })
+      .catch((error) => {
+        setErrorMessage(error.message || "Failed to remove policy rule.");
+      });
   };
 
   return (
@@ -148,6 +212,11 @@ export default function PolicyRules() {
           recommendations to keep malicious traffic out without hurting legitimate users.
         </p>
       </header>
+      {(loading || errorMessage) && (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          {loading ? "Loading policy rules..." : errorMessage}
+        </div>
+      )}
 
       <section className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -280,9 +349,7 @@ export default function PolicyRules() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">AI policy ideas</h2>
-              <p className="text-sm text-gray-500">
-                Suggestions to automate IP defense policy (currently mock data).
-              </p>
+              <p className="text-sm text-gray-500">Suggestions to automate IP defense policy.</p>
             </div>
             <div className="rounded-full bg-blue-100 p-3 text-blue-600">
               <Shield size={20} />
@@ -345,30 +412,36 @@ export default function PolicyRules() {
               </div>
             </div>
             <div className="mt-5 space-y-3">
-              {entries[listConfig.key].map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{entry.ip}</p>
-                    <p className="text-xs text-gray-500">{entry.reason}</p>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span>By {entry.addedBy}</span>
-                    <span className="rounded-full bg-white px-2 py-1 text-gray-600 shadow-sm">
-                      Expires: {entry.expires}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(listConfig.key, entry.id)}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
-                    >
-                      <Trash2 size={12} /> Remove
-                    </button>
-                  </div>
+              {entries[listConfig.key].length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                  No {listConfig.title.toLowerCase()} entries yet.
                 </div>
-              ))}
+              ) : (
+                entries[listConfig.key].map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{entry.ip}</p>
+                      <p className="text-xs text-gray-500">{entry.reason}</p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span>By {entry.addedBy}</span>
+                      <span className="rounded-full bg-white px-2 py-1 text-gray-600 shadow-sm">
+                        Expires: {entry.expires}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(listConfig.key, entry.id)}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 transition hover:border-gray-300 hover:text-gray-900"
+                      >
+                        <Trash2 size={12} /> Remove
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         ))}
