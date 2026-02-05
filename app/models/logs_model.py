@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.db.db_config import get_conn
@@ -166,3 +166,42 @@ class LogsModel:
         # Also de-dupe and sort for stable UI.
         types = sorted(set(types))
         return ["None"] + types
+
+    @staticmethod
+    def fetch_raw_logs_window(range: str, limit: int = 20000) -> List[Dict[str, Any]]:
+        """
+        Fetch raw_log objects within a time window using JSON_EXTRACT on $.ts.
+        This avoids pulling a large LIMIT and filtering in Python.
+
+        range: "24h" | "7d"
+        limit: safety cap
+        Returns: list[dict] (decoded raw_log)
+        """
+        r = (range or "").lower().strip()
+        if r == "7d":
+            start = datetime.now(timezone.utc) - timedelta(days=7)
+        else:
+            start = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        sql = """
+            SELECT raw_log
+            FROM event_logs
+            WHERE JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.ts')) >= %s
+            ORDER BY log_id DESC
+            LIMIT %s
+        """
+
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (start.isoformat(), limit))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            raw = r.get("raw_log")
+            obj = raw if isinstance(raw, dict) else json.loads(raw)
+            out.append(obj)
+        return out

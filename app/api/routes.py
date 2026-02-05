@@ -1,5 +1,7 @@
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, Response, Request, HTTPException
+from __future__ import annotations
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any, List, Tuple
+from fastapi import APIRouter, Response, Request, HTTPException, Query
 from pydantic import BaseModel
 from typing import Literal, Optional
 from urllib.parse import urljoin, urlparse
@@ -19,6 +21,8 @@ from app.services.crawler_for_any_website import AuthenticatedCrawler
 from app.services.train_hybrid_ai import main as train_hybrid_main
 
 from app.controllers.policy_controller import PolicyController
+
+from app.services.traffic_analysis_service import TrafficAnalysisService
 
 router = APIRouter()
 
@@ -150,3 +154,20 @@ def create_policy_entry(payload: PolicyRuleCreate):
 @router.delete("/policy/entries/{rule_id}")
 def delete_policy_entry(rule_id: int):
     return PolicyController.delete_rule(rule_id)
+
+@router.get("/overview")
+def overview():
+    return
+
+@router.get("/traffic/analysis")
+def traffic_analysis(
+    range: str = Query(
+        "24h",
+        pattern="^(24h|7d)$",
+        description="Time window for analysis"
+    )
+):
+    """
+    Returns aggregated traffic analytics for the WAF dashboard.
+    """
+    return TrafficAnalysisService.build(range)
