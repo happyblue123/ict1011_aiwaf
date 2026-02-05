@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, Response, Request, HTTPException, Query
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from urllib.parse import urljoin, urlparse
 
 from app.controllers.auth_controller import (
@@ -23,6 +23,8 @@ from app.services.train_hybrid_ai import main as train_hybrid_main
 from app.controllers.policy_controller import PolicyController
 
 from app.services.traffic_analysis_service import TrafficAnalysisService
+
+from app.controllers.ddos_controller import DdosController
 
 router = APIRouter()
 
@@ -45,6 +47,15 @@ class PolicyRuleCreate(BaseModel):
     reason: Optional[str] = None
     created_by: Optional[str] = None
     expires_at: Optional[str] = None
+
+class DdosModule(BaseModel):
+    label: str
+    active: bool
+
+class DdosSettingsUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    mode: Optional[str] = None
+    modules: Optional[List[DdosModule]] = None
 
 @router.post("/login")
 def login(payload: LoginRequest, request: Request, response: Response):
@@ -171,3 +182,15 @@ def traffic_analysis(
     Returns aggregated traffic analytics for the WAF dashboard.
     """
     return TrafficAnalysisService.build(range)
+
+@router.get("/ddos/overview")
+def ddos_overview(hours: int = 24):
+    return DdosController.get_overview(hours=hours)
+
+@router.get("/ddos/settings")
+def ddos_settings():
+    return DdosController.get_settings()
+
+@router.put("/ddos/settings")
+def update_ddos_settings(payload: DdosSettingsUpdate):
+    return DdosController.update_settings(payload.model_dump())

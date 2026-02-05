@@ -1,6 +1,6 @@
 // View of DDos attack statistics and mitigation controls
 // src/pages/DDoSDashboard.jsx
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Zap, 
   ShieldCheck, 
@@ -24,28 +24,110 @@ import {
   Cell
 } from 'recharts';
 
-// --- MOCK DATA: LIVE TRAFFIC VS. TRAINED BASELINE ---
-const liveTrafficData = Array.from({ length: 24 }, (_, i) => {
-  const baseline = Math.floor(Math.random() * 200) + 100;
-  const current = i > 15 && i < 20 ? baseline * 4 : baseline + (Math.random() * 50); // Simulated Spike
-  return {
-    time: `${i}:00`,
-    currentRPS: current,
-    baselineRPS: baseline,
-    dropped: current > baseline * 2 ? current - (baseline * 2) : 0,
-  };
-});
-
-const topAttackers = [
-  { ip: '192.168.1.45', score: 0.98, rps: 450, region: 'RU' },
-  { ip: '45.22.11.90', score: 0.95, rps: 310, region: 'CN' },
-  { ip: '103.4.55.1', score: 0.88, rps: 280, region: 'BR' },
-  { ip: '89.1.2.33', score: 0.82, rps: 150, region: 'UA' },
-];
+const defaultTraffic = Array.from({ length: 24 }, (_, i) => ({
+  time: `${i}:00`,
+  currentRPS: 0,
+  baselineRPS: 0,
+  dropped: 0,
+}));
 
 const DDoSDashboard = () => {
   const [isMitigationActive, setMitigation] = useState(true);
-  const [aiThreshold, setThreshold] = useState(0.85);
+  const [mode, setMode] = useState('Adaptive AI Rate-Limiting');
+  const [modules, setModules] = useState([]);
+  const [trafficData, setTrafficData] = useState(defaultTraffic);
+  const [topAttackers, setTopAttackers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingModules, setSavingModules] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const statusLabel = useMemo(() => (
+    isMitigationActive ? 'Active & Filtering' : 'Monitoring Only'
+  ), [isMitigationActive]);
+
+  const fetchOverview = async () => {
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch('/api/ddos/overview', { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error('Failed to load DDoS overview.');
+      }
+      const data = await response.json();
+      setMitigation(Boolean(data?.status?.is_active));
+      setMode(data?.status?.mode || 'Adaptive AI Rate-Limiting');
+      setModules(data?.status?.modules || []);
+      setTrafficData(data?.traffic || defaultTraffic);
+      setTopAttackers(data?.top_attackers || []);
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to load DDoS overview.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOverview();
+  }, []);
+
+  const handleToggleMitigation = async () => {
+    const next = !isMitigationActive;
+    setMitigation(next);
+    setErrorMessage('');
+
+    try {
+      const response = await fetch('/api/ddos/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ is_active: next }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update mitigation status.');
+      }
+      const data = await response.json();
+      setMitigation(Boolean(data?.is_active));
+      setMode(data?.mode || 'Adaptive AI Rate-Limiting');
+      setModules(data?.modules || []);
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to update mitigation status.');
+    }
+  };
+
+  const handleToggleModule = async (label) => {
+    if (!label || savingModules) {
+      return;
+    }
+    const nextModules = (modules.length ? modules : [
+      { label: 'Volumetric Rate Limiter', active: true },
+      { label: 'Behavioral Bot Detection', active: true },
+      { label: 'Zombie-Request Filtering', active: false },
+    ]).map((mod) => (
+      mod.label === label ? { ...mod, active: !mod.active } : mod
+    ));
+
+    setModules(nextModules);
+    setSavingModules(true);
+    setErrorMessage('');
+    try {
+      const response = await fetch('/api/ddos/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ modules: nextModules }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update modules.');
+      }
+      const data = await response.json();
+      setModules(data?.modules || nextModules);
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to update modules.');
+      await fetchOverview();
+    } finally {
+      setSavingModules(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -59,15 +141,15 @@ const DDoSDashboard = () => {
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-800">
-              DDoS Protection: {isMitigationActive ? 'Active & Filtering' : 'Monitoring Only'}
+              DDoS Protection: {statusLabel}
             </h2>
             <p className="text-sm text-gray-600">
-              Current Mode: <span className="font-semibold">Adaptive AI Rate-Limiting</span>
+              Current Mode: <span className="font-semibold">{mode}</span>
             </p>
           </div>
         </div>
         <button 
-          onClick={() => setMitigation(!isMitigationActive)}
+          onClick={handleToggleMitigation}
           className={`px-6 py-2 rounded-lg font-bold text-white transition-all ${
             isMitigationActive ? 'bg-red-500 hover:bg-red-600' : 'bg-green-600 hover:bg-green-700'
           }`}
@@ -75,6 +157,12 @@ const DDoSDashboard = () => {
           {isMitigationActive ? 'DISABLE MITIGATION' : 'ENABLE MITIGATION'}
         </button>
       </div>
+
+      {(loading || errorMessage) && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          {loading ? 'Loading DDoS telemetry...' : errorMessage}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 2. Main Chart: Requests vs Baseline */}
@@ -89,7 +177,7 @@ const DDoSDashboard = () => {
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={liveTrafficData}>
+              <AreaChart data={trafficData}>
                 <defs>
                   <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.1}/>
@@ -115,38 +203,27 @@ const DDoSDashboard = () => {
         {/* 3. AI Threshold Tuning (Unique Value Prop) */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Settings2 size={18} className="text-purple-500" /> AI Sensitivity Control
+            <Settings2 size={18} className="text-purple-500" /> Mitigation Modules
           </h3>
           <div className="flex-1 space-y-8">
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-              <div className="flex justify-between mb-2">
-                <label className="text-sm font-semibold text-gray-700">Block Probability Threshold</label>
-                <span className="text-purple-600 font-mono font-bold">{aiThreshold}</span>
-              </div>
-              <input 
-                type="range" min="0.5" max="0.99" step="0.01" value={aiThreshold}
-                onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
-              />
-              <div className="flex justify-between text-[10px] text-gray-400 mt-2">
-                <span>Aggressive (Low FP)</span>
-                <span>Conservative (High Security)</span>
-              </div>
-            </div>
-
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Active Modules</h4>
-              {[
+              {(modules.length ? modules : [
                 { label: 'Volumetric Rate Limiter', active: true },
                 { label: 'Behavioral Bot Detection', active: true },
                 { label: 'Zombie-Request Filtering', active: false },
-              ].map((mod) => (
-                <div key={mod.label} className="flex items-center justify-between text-sm">
+              ]).map((mod) => (
+                <button
+                  key={mod.label}
+                  type="button"
+                  onClick={() => handleToggleModule(mod.label)}
+                  className="flex items-center justify-between text-sm w-full text-left"
+                >
                   <span className="text-gray-600">{mod.label}</span>
                   <div className={`w-8 h-4 rounded-full relative transition-colors ${mod.active ? 'bg-blue-500' : 'bg-gray-300'}`}>
                     <div className={`absolute top-1 w-2 h-2 bg-white rounded-full transition-all ${mod.active ? 'right-1' : 'left-1'}`}></div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -188,7 +265,13 @@ const DDoSDashboard = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold rounded">BLOCKED</span>
+                  <span className={`px-2 py-1 text-[10px] font-bold rounded ${
+                    attacker.action === 'BLOCKED'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {attacker.action}
+                  </span>
                 </td>
               </tr>
             ))}

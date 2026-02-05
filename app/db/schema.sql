@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS crawler_settings;
 DROP TABLE IF EXISTS event_logs;
 DROP TABLE IF EXISTS ip_policy_rules;
+DROP TABLE IF EXISTS ddos_settings;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS waf_instances;
 
@@ -75,8 +76,18 @@ CREATE TABLE ip_policy_rules (
     INDEX idx_ip_policy_list (list_type)
 );
 
+-- 6. DDOS SETTINGS TABLE
 -- ==========================================
--- 6. SESSIONS TABLE (CHILD of users)
+CREATE TABLE ddos_settings (
+    id INT PRIMARY KEY,
+    is_active BOOLEAN DEFAULT TRUE,
+    mode VARCHAR(100) DEFAULT 'Adaptive AI Rate-Limiting',
+    modules JSON NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- ==========================================
+-- 7. SESSIONS TABLE (CHILD of users)
 -- Deleting a user deletes sessions
 -- ==========================================
 CREATE TABLE sessions (
