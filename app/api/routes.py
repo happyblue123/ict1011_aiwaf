@@ -139,7 +139,7 @@ def get_logs(
 def filters():
     return LogsController.get_attack_types()
 
-router.get("/policy/entries")
+@router.get("/policy/entries")
 def list_policy_entries(list_type: Optional[str] = None):
     return PolicyController.list_rules(list_type)
 
