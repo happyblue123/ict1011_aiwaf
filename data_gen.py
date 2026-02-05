@@ -1,12 +1,12 @@
 import requests
-import re
 import json
 import time
 import random
-import string
+import argparse
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse, unquote_plus
+from urllib.parse import urljoin, urlparse, unquote_plus, urlencode
 from pathlib import Path
+from app.waf.ai_features import extract_features
 
 # ==========================================
 # PART 1: The Crawler & Form Analyzer
@@ -92,6 +92,13 @@ class DatasetGenerator:
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
         ]
+        self.referrers = [
+            "https://www.google.com/",
+            "https://www.bing.com/",
+            "https://news.ycombinator.com/",
+            "https://example.com/"
+        ]
+        self.accept_languages = ["en-US,en;q=0.9", "en-GB,en;q=0.8", "zh-CN,zh;q=0.9"]
 
     def _generate_value(self, field_name):
         """Smart value generation based on field names."""
@@ -107,52 +114,52 @@ class DatasetGenerator:
             return " ".join(random.choices(words, k=5))
         return "dummy_data"
 
-    def extract_features(self, method, url, body, headers):
-        """
-        Duplicate of your WAF's feature extraction logic to ensure compatibility.
-        """
-        # (This must match your ai_features.py logic exactly)
-        _SUSPICIOUS = set(string.punctuation)
-        _HEX_RE = re.compile(r"%[0-9a-fA-F]{2}")
-        
-        parsed = urlparse(url)
-        path = parsed.path
-        query = parsed.query
-        
-        decoded_path = unquote_plus(path)
-        
-        feat = {
-            "method": method,
-            "raw_path_len": len(path),
-            "decoded_path_len": len(decoded_path),
-            "normalized_path_len": len(path), # Simplified for gen
-            "path_slash_count": path.count("/"),
-            "path_dot_count": path.count("."),
-            "path_pct_count": path.count("%"),
-            "path_hex_pct_count": len(_HEX_RE.findall(path)),
-            "query_len": len(query),
-            "query_pct_count": query.count("%"),
-            "query_hex_pct_count": len(_HEX_RE.findall(query)),
-            "query_amp_count": query.count("&"),
-            "query_eq_count": query.count("="),
-            "query_suspicious_char_count": sum(1 for c in unquote_plus(query) if c in _SUSPICIOUS),
-            "path_suspicious_char_count": sum(1 for c in decoded_path if c in _SUSPICIOUS),
-            "header_count": len(headers),
-            "has_cookie": 1 if "cookie" in headers else 0,
-            "ua_len": len(headers.get("user-agent", "")),
-            "ct_len": len(headers.get("content-type", "")),
-            "body_len": len(body),
-            "body_pct_count": body.count("%"),
-            "body_hex_pct_count": len(_HEX_RE.findall(body)),
-            "body_suspicious_char_count": sum(1 for c in body if c in _SUSPICIOUS),
-            "body_alpha_count": sum(1 for c in body if c.isalpha()),
-            "body_digit_count": sum(1 for c in body if c.isdigit()),
-            "ct_is_json": 1 if "json" in headers.get("content-type", "") else 0,
-            "ct_is_form": 1 if "form" in headers.get("content-type", "") else 0,
+    def _headers(self, include_body=False, anomaly=False):
+        headers = {
+            "user-agent": random.choice(self.user_agents),
+            "accept-language": random.choice(self.accept_languages),
         }
-        return feat
+        if random.random() < 0.4:
+            headers["referer"] = random.choice(self.referrers)
+        if random.random() < 0.2:
+            headers["cookie"] = f"session_id={random.randint(100000,999999)}"
+        if include_body:
+            headers["content-type"] = "application/x-www-form-urlencoded"
+        if anomaly and random.random() < 0.5:
+            headers["content-type"] = random.choice([
+                "text/plain",
+                "application/json",
+                "application/octet-stream",
+            ])
+        return headers
 
-    def generate_single(self):
+    def _random_query(self):
+        params = {
+            "q": random.choice(["book", "ai", "security", "laptop", "monitor"]),
+            "page": random.randint(1, 10),
+        }
+        if random.random() < 0.3:
+            params["sort"] = random.choice(["asc", "desc", "price", "popular"])
+        return urlencode(params)
+
+    def _feature_row(self, method, target_url, body, headers):
+        parsed = urlparse(target_url)
+        raw_path = parsed.path or "/"
+        decoded_path = unquote_plus(raw_path)
+        normalized_path = raw_path
+        raw_query = parsed.query
+        return extract_features(
+            method=method,
+            raw_path=raw_path,
+            decoded_path=decoded_path,
+            normalized_path=normalized_path,
+            raw_query=raw_query,
+            headers=headers,
+            body_len=len(body),
+            body_text=body,
+        )
+
+    def generate_baseline(self):
         # Pick a random page we discovered
         url, data = random.choice(list(self.site_map.items()))
         forms = data["forms"]
@@ -171,26 +178,68 @@ class DatasetGenerator:
                 payload_parts.append(f"{field}={val}")
             
             body = "&".join(payload_parts)
-            headers = {
-                "content-type": "application/x-www-form-urlencoded",
-                "user-agent": random.choice(self.user_agents)
-            }
+            headers = self._headers(include_body=True)
         else:
             # Just viewing the page
             method = "GET"
-            target_url = url
+            query = self._random_query() if random.random() < 0.4 else ""
+            target_url = f"{url}?{query}" if query else url
             body = ""
-            headers = {"user-agent": random.choice(self.user_agents)}
+            headers = self._headers()
 
-        return self.extract_features(method, target_url, body, headers)
+        return self._feature_row(method, target_url, body, headers)
+
+    def generate_anomaly(self):
+        url, data = random.choice(list(self.site_map.items()))
+        forms = data["forms"]
+        attack_payloads = [
+            "id=1 OR 1=1",
+            "search=<script>alert(1)</script>",
+            "path=../../../../etc/passwd",
+            "q=%27%20UNION%20SELECT%20*",
+            "cmd=cat%20/etc/passwd",
+        ]
+        method = random.choice(["POST", "PUT", "DELETE", "TRACE"])
+        target_url = url
+
+        if forms and random.random() < 0.5:
+            form = random.choice(forms)
+            target_url = form["action"]
+            payload_parts = []
+            for field in form["inputs"]:
+                if random.random() < 0.6:
+                    payload_parts.append(f"{field}={random.choice(attack_payloads)}")
+                else:
+                    payload_parts.append(f"{field}={self._generate_value(field)}")
+            body = "&".join(payload_parts)
+            headers = self._headers(include_body=True, anomaly=True)
+        else:
+            if random.random() < 0.7:
+                target_url = f"{url}?{random.choice(attack_payloads)}"
+            body = random.choice(attack_payloads)
+            headers = self._headers(include_body=True, anomaly=True)
+
+        return self._feature_row(method, target_url, body, headers)
 
 # ==========================================
 # PART 3: Execution
 # ==========================================
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate baseline/anomaly datasets for WAF training.")
+    parser.add_argument("--base-url", default="http://127.0.0.1:5000", help="Base URL to crawl.")
+    parser.add_argument("--limit", type=int, default=20000, help="Total records to generate.")
+    parser.add_argument("--anomaly-rate", type=float, default=0.05, help="Fraction of anomalies (0-1).")
+    parser.add_argument("--output", default="app/ai_models/data/ai_requests.jsonl", help="Output JSONL path.")
+    parser.add_argument("--seed", type=int, default=None, help="Optional random seed.")
+    parser.add_argument("--progress", type=int, default=5000, help="Progress print interval.")
+    args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
+
     # 1. CRAWL (The Map Phase)
     # Ensure your shop_app.py is running on port 5000!
-    crawler = SmartCrawler("http://127.0.0.1:5000")
+    crawler = SmartCrawler(args.base_url)
     site_map = crawler.crawl()
 
     if not site_map:
@@ -199,23 +248,24 @@ if __name__ == "__main__":
 
     # 2. GENERATE (The Training Phase)
     generator = DatasetGenerator(site_map)
-    output_file = Path("app/ai_models/data/ai_requests.jsonl")
+    output_file = Path(args.output)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
-    LIMIT = 20000 # Start small to test, increase acccordingly
-    print(f"[*] Generating {LIMIT} training records based on crawled data...")
+    total = args.limit
+    print(f"[*] Generating {total} training records (~{args.anomaly_rate:.0%} anomalies)...")
     
     with open(output_file, "w") as f:
-        for i in range(LIMIT):
-            feat = generator.generate_single()
+        for i in range(total):
+            is_anomaly = random.random() < args.anomaly_rate
+            feat = generator.generate_anomaly() if is_anomaly else generator.generate_baseline()
             row = {
                 "ts": time.time(),
-                "label": "baseline",
+                "label": "anomaly" if is_anomaly else "baseline",
                 "features": feat
             }
             f.write(json.dumps(row) + "\n")
             
-            if i % 5000 == 0 and i > 0:
+            if args.progress and i % args.progress == 0 and i > 0:
                 print(f"    ... {i} records generated")
                 
     print(f"[+] Done! Saved to {output_file}")
