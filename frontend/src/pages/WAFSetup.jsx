@@ -21,16 +21,44 @@ const WAFSetup = ({ onComplete }) => {
   const [error, setError] = useState("");
 
   const [formData, setFormData] = useState({
-    targetIp: 'http://127.0.0.1:5000', // Default example
+    targetIp: 'http://127.0.0.1:5000',
     wafMode: 'protect',
     wafPort: '8080',
     username: 'admin',
     password: 'admin',
-    loginUsername: 'test',
-    loginPassword: 'test',
     loginEndpoint: '/login',
-    escapeEndpoint: '/logout'
+    escapeEndpoint: '/logout',
+
+    // ✅ Dynamic login payload rows (key/value pairs)
+    loginPayloadPairs: [
+      { key: "username", value: "test" },
+      { key: "password", value: "test" },
+    ],
   });
+
+  const addPayloadPair = () => {
+    setFormData((prev) => ({
+      ...prev,
+      loginPayloadPairs: [...prev.loginPayloadPairs, { key: "", value: "" }],
+    }));
+  };
+
+  const removePayloadPair = (idx) => {
+    setFormData((prev) => ({
+      ...prev,
+      loginPayloadPairs: prev.loginPayloadPairs.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const updatePayloadPair = (idx, field, val) => {
+    setFormData((prev) => ({
+      ...prev,
+      loginPayloadPairs: prev.loginPayloadPairs.map((row, i) =>
+        i === idx ? { ...row, [field]: val } : row
+      ),
+    }));
+  };
+
 
   // Track if deployment has started to prevent double-firing
   const deploymentStarted = useRef(false);
@@ -43,7 +71,20 @@ const WAFSetup = ({ onComplete }) => {
     deploymentStarted.current = true;
     setError("");
 
+    // animate progress while backend runs
+    setProgress(10);
+    const timer = setInterval(() => {
+      setProgress((p) => (p >= 90 ? p : p + 10));
+    }, 300);
+
     const deployToBackend = async () => {
+      const login_payload = {};
+      for (const row of formData.loginPayloadPairs) {
+        const k = (row.key || "").trim();
+        if (!k) continue;
+        login_payload[k] = row.value ?? "";
+      }
+
       try {
         const payload = {
           target_host: formData.targetIp,
@@ -52,6 +93,9 @@ const WAFSetup = ({ onComplete }) => {
           excluded_endpoints: formData.escapeEndpoint,
           username: formData.username,
           password: formData.password,
+
+          // ✅ NEW
+          login_payload,
         };
 
         const res = await fetch("/api/setupwaf", {
@@ -71,9 +115,13 @@ const WAFSetup = ({ onComplete }) => {
         }
 
         // ✅ SUCCESS → go straight to dashboard
-        navigate("/login", { replace: true });
+        clearInterval(timer);
+        setProgress(100);
+        deploymentStarted.current = false; // ✅ allow re-deploy if they revisit step 4
+        setStep(5);
 
       } catch (err) {
+        clearInterval(timer);
         console.error("setupwaf error:", err);
         setError(err.message || "Deployment failed");
         deploymentStarted.current = false;
@@ -82,18 +130,17 @@ const WAFSetup = ({ onComplete }) => {
     };
 
     deployToBackend();
+
+    // ✅ cleanup if component unmounts
+    return () => clearInterval(timer);
   }, [step]);
 
-  const handleNext = () => setStep(step + 1);
-  const handleBack = () => setStep(step - 1);
+  const handleNext = () => setStep((s) => s + 1);
+  const handleBack = () => setStep((s) => s - 1);
 
   // Final Success Action
   const handleFinish = () => {
-    if (onComplete) {
-      onComplete(); // Tells App.jsx to switch state
-      // Note: We don't need navigate('/login') here because App.jsx 
-      // will redirect automatically once isWafSetup becomes true.
-    }
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -217,54 +264,64 @@ const WAFSetup = ({ onComplete }) => {
           {/* STEP 3: CRAWLER SETTINGS */}
           {step === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-              <div className="space-y-4 pt-4">
-                <label className="text-sm font-bold text-gray-900 flex items-center gap-2 uppercase tracking-wider">
-                  <Rocket size={16} className="text-blue-500" /> Crawler Settings
-                </label>
-                
-                {/* Note: loginUsername/Password aren't currently used by backend payload but kept for UI */}
-                <div className="grid grid-cols-2 gap-3">
-                  <input 
-                    type="text" placeholder="Login Username (Optional)"
-                    className="w-full p-3 rounded-lg border border-gray-200 outline-none text-sm"
-                    value={formData.loginUsername}
-                    onChange={(e) => setFormData({...formData, loginUsername: e.target.value})}
-                  />
-                  <input 
-                    type="password" placeholder="Login Password (Optional)"
-                    className="w-full p-3 rounded-lg border border-gray-200 outline-none text-sm"
-                    value={formData.loginPassword}
-                    onChange={(e) => setFormData({...formData, loginPassword: e.target.value})}
-                  />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-700">
+                    Login Payload (Key / Value Pairs)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={addPayloadPair}
+                    className="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold"
+                  >
+                    + Add Field
+                  </button>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-xs font-mono">POST</span>
-                    <input 
-                      type="text" placeholder="Login Endpoint (e.g. /login)"
-                      className="w-full p-3 pl-14 rounded-lg border border-gray-200 outline-none text-sm"
-                      value={formData.loginEndpoint}
-                      onChange={(e) => setFormData({...formData, loginEndpoint: e.target.value})}
+                {formData.loginPayloadPairs.map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                    <input
+                      type="text"
+                      placeholder="key (e.g. username)"
+                      className="col-span-5 p-3 rounded-lg border border-gray-200 outline-none text-sm"
+                      value={row.key}
+                      onChange={(e) => updatePayloadPair(idx, "key", e.target.value)}
                     />
-                  </div>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-3 flex items-center text-gray-400 text-xs font-mono">CSV</span>
-                    <input 
-                      type="text" placeholder="Excluded Endpoints (e.g. /logout, /reset)"
-                      className="w-full p-3 pl-14 rounded-lg border border-gray-200 outline-none text-sm"
-                      value={formData.escapeEndpoint}
-                      onChange={(e) => setFormData({...formData, escapeEndpoint: e.target.value})}
+                    <input
+                      type="text"
+                      placeholder="value (e.g. admin)"
+                      className="col-span-6 p-3 rounded-lg border border-gray-200 outline-none text-sm"
+                      value={row.value}
+                      onChange={(e) => updatePayloadPair(idx, "value", e.target.value)}
                     />
+                    <button
+                      type="button"
+                      onClick={() => removePayloadPair(idx)}
+                      disabled={formData.loginPayloadPairs.length <= 1}
+                      className="col-span-1 h-10 w-10 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
                   </div>
-                </div>
+                ))}
+
+                <p className="text-xs text-gray-500">
+                  Example: username=admin, password=pass, any_other_field=value
+                </p>
               </div>
 
               <div className="flex gap-3">
-                <button onClick={handleBack} className="px-6 py-4 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                <button
+                  onClick={handleBack}
+                  className="px-6 py-4 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                >
                   <ChevronLeft size={20} />
                 </button>
-                <button onClick={handleNext} className="flex-1 py-4 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/20">
+                <button
+                  onClick={handleNext}
+                  className="flex-1 py-4 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/20"
+                >
                   Deploy Configuration <Rocket size={18} />
                 </button>
               </div>

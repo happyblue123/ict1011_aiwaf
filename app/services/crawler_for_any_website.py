@@ -38,54 +38,76 @@ class AuthenticatedCrawler:
         return urlparse(url).netloc == self.scope
 
     def login(self):
-        if not self.auth :
+        if not self.auth:
             print("[*] No authentication configured. Skipping login.")
             return True
 
-        login_url = self.url + self.auth["login_endpoint"]
-        login_payload = self.auth["login_payload"]
-        # Add Referer for strict security checks
+        login_ep = self.auth.get("login_endpoint") or ""
+        login_url = urljoin(self.url.rstrip("/") + "/", login_ep.lstrip("/"))
+
+        # ✅ dynamic payload dict
+        payload = dict(self.auth.get("login_payload") or {})
+
         headers = {
             "Referer": login_url,
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
 
-        # extract token value if have
-        if login_payload["token_required"] :
-            r = self.session.get(login_url)
-            r.raise_for_status()
+        # ✅ token handling is OPTIONAL (not hardcoded in payload)
+        token_required = bool(self.auth.get("token_required", False))
+        token_name = self.auth.get("token_name")
 
-            soup = BeautifulSoup(r.text, "html.parser")
-            token = soup.find("input", {"name": login_payload["token_name"]})
-            login_payload[login_payload["token_name"]] = token["value"]
+        if token_required and token_name:
+            try:
+                r0 = self.session.get(login_url, headers=headers, allow_redirects=True, timeout=10)
+                r0.raise_for_status()
+
+                soup = BeautifulSoup(r0.text, "html.parser")
+                token_el = soup.find("input", {"name": token_name})
+                if not token_el or not token_el.get("value"):
+                    print(f"[-] Token field '{token_name}' not found on login page")
+                    return False
+
+                payload[token_name] = token_el["value"]
+            except Exception as e:
+                print(f"[-] Token fetch failed: {e}")
+                return False
+
         try:
-            next_url = login_url
-            r = self.session.post(login_url, data=login_payload, headers=headers, allow_redirects=False)
+            r = self.session.post(
+                login_url,
+                data=payload,
+                headers=headers,
+                allow_redirects=False,
+                timeout=10
+            )
+
             location = r.headers.get("Location")
-            # next_url = urljoin(self.url, location)
-            
-           # 1️⃣ Redirect-based success (most reliable)
+            # 1️⃣ Redirect-based success
             if r.status_code in (301, 302, 303, 307, 308) and location:
                 next_url = urljoin(login_url, location)
-
-                if (
-                    next_url != login_url and
-                    login_endpoint not in next_url.lower()
-                ):
+                # treat redirect away from login endpoint as success
+                if login_ep.lower().strip("/") not in next_url.lower():
                     return True
 
             # 2️⃣ Explicit failure codes
             if r.status_code in (401, 403):
-                print("Credentials provided are wrong or access denied")
+                print("[-] Credentials wrong or access denied")
                 return False
 
-            # 3️⃣ Fallback (status 200 usually means login page again)
-            print("Credentials provided are wrong...")
-            return False
+            # 3️⃣ Heuristic: if we still see login form, likely failed
+            body = (r.text or "").lower()
+            if "password" in body and "login" in body:
+                print("[-] Login likely failed (still on login page)")
+                return False
+
+            # Fallback: not sure, but treat as success if not obviously failed
+            return True
 
         except Exception as e:
             print(f"[-] Login Exception: {e}")
             return False
+
 
     def extract_urls(self, base_url: str, html: str) -> set[str]:
         soup = BeautifulSoup(html, "html.parser")
@@ -146,64 +168,33 @@ class AuthenticatedCrawler:
 
         return out
 
-    def crawl(self):
-        """The Main Loop"""
-        if not self.login():
-            return
+    def crawl(self) -> bool:
+        """The Main Loop. Returns True if started successfully, False if login failed."""
+        ok = self.login()
+        if not ok:
+            return False
 
-        # Start crawling at the index
         start_node = self.url
         self.queue.append(start_node)
-        
-        print(f"[*] Starting Authenticated Crawl...")
-        
+
+        print("[*] Starting Authenticated Crawl...")
+
         while self.queue:
             url = self.queue.pop(0)
             if url in self.visited:
                 continue
-
             try:
                 print(f"   Crawling: {url}")
                 r = self.session.get(url)
                 self.visited.add(url)
-                
+
                 discovered = self.extract_urls(url, r.text)
                 for full_url in discovered:
                     if self.in_scope(full_url) and full_url not in self.visited:
                         self.queue.append(full_url)
 
-                time.sleep(0.2) 
-
+                time.sleep(0.2)
             except Exception as e:
                 print(f"   Error crawling {url}: {e}")
 
-if __name__ == "__main__":
-
-    # before crawling, checks if the website requires authentication/a session cookie  
-    # if requires authenticated session, ask for credentials and the endpoint
-    # domain_to_crawl = input("Domain to crawl: ").strip()
-
-    ##########################################################################################
-    username = "test"
-    password = "test"
-    login_endpoint = "/login" # change to the exact login endpoint of the website
-    # change the payload to how to website accepts
-
-    auth_info = {
-        "login_payload": {
-            "username": username,
-            "password": password,
-            # "Login": "Login",
-            "token_required": False,
-            # "token_name": "user_token"
-        },
-        "login_endpoint": login_endpoint
-    }
-    origin_url = "http://127.0.0.1:5000" # change to whichever website to crawl
-    ###########################################################################################
-
-    bot = AuthenticatedCrawler(
-        origin_url=origin_url,
-        auth_info=auth_info
-    )
-    bot.crawl()
+        return True

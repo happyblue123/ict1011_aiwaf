@@ -136,7 +136,7 @@ async def handle_all(request: Request, path: str):
 
     # IMPORTANT: baseline collection must NOT depend on ai.is_ready()
     if (decision.action == Action.ALLOW) and not anomaly_flagged :
-        append_baseline(features)
+        append_baseline(features) # write to ai_requests.jsonl file
         anomaly_baseline_written = True
 
     # ===== BLOCK =====

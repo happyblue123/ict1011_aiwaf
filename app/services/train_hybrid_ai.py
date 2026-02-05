@@ -110,6 +110,3 @@ def main():
     print("Saved bundle:", BUNDLE_OUT)
     print("Saved autoencoder:", AE_OUT)
     print("AE calib:", calib)
-
-if __name__ == "__main__":
-    main()

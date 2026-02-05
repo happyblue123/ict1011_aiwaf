@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Response, Request
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, Response, Request, HTTPException
 from pydantic import BaseModel
+from urllib.parse import urljoin, urlparse
 
 from app.controllers.auth_controller import (
     login_controller,
@@ -10,6 +12,11 @@ from app.controllers.waf_controller import (
     setup_waf_controller
 )
 from app.controllers.logs_controller import LogsController
+
+from app.services.crawler_for_any_website import AuthenticatedCrawler
+
+from app.services.train_hybrid_ai import main as train_hybrid_main
+
 
 router = APIRouter()
 
@@ -24,6 +31,7 @@ class SetupWAFRequest(BaseModel):
     excluded_endpoints: str | None = None
     username: str
     password: str
+    login_payload: Optional[Dict[str, Any]] = None
 
 @router.post("/login")
 def login(payload: LoginRequest, request: Request, response: Response):
@@ -38,10 +46,64 @@ def logout(request: Request, response: Response):
     return logout_controller(request, response)
 
 @router.post("/setupwaf")
-def setupwaf(payload: SetupWAFRequest):
-    print(payload)
-    return setup_waf_controller(payload)
+def setupwaf(payload: SetupWAFRequest, request: Request):
 
+    # 1) Build origin_url from target_host
+    raw = (payload.target_host or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="target_host is required")
+
+    if raw.startswith(("http://", "https://")):
+        p = urlparse(raw)
+        if not p.hostname:
+            raise HTTPException(status_code=400, detail="Invalid target_host URL")
+        scheme = p.scheme or "http"
+        host = p.hostname
+        port = p.port or (443 if scheme == "https" else 80)
+    else:
+        scheme = "http"
+        if ":" in raw:
+            host_part, port_str = raw.rsplit(":", 1)
+            if not port_str.isdigit():
+                raise HTTPException(status_code=400, detail="Invalid port in target_host")
+            host, port = host_part, int(port_str)
+        else:
+            host, port = raw, 80
+
+    origin_url = f"{scheme}://{host}:{port}"
+
+    # 2) Build auth_info (optional)
+    auth_info = None
+    if payload.login_endpoint and payload.login_payload:
+        auth_info = {
+            "login_endpoint": payload.login_endpoint,
+            "login_payload": payload.login_payload,
+        }
+
+    # 3) Crawl first to validate credentials
+    crawler = AuthenticatedCrawler(origin_url=origin_url, auth_info=auth_info)
+    ok = crawler.crawl()
+
+    if auth_info is not None and not ok:
+        raise HTTPException(
+            status_code=401,
+            detail="Deployment failed: crawler credentials are incorrect."
+        )
+
+    # 4) Only if crawl succeeded: write WAF config to DB
+    setup_waf_controller(payload)  # no need to return waf_id
+
+    # 5) Train AI model + reload into app
+    train_hybrid_main()
+    anomaly_ai = getattr(request.app.state, "anomaly_ai_scorer", None)
+    if anomaly_ai and hasattr(anomaly_ai, "load"):
+        anomaly_ai.load()
+
+    return {
+        "status": "ok",
+        "baseline_count": len(crawler.visited),
+    }
+    
 @router.get("/logs")
 def get_logs(
     search: str = "",
