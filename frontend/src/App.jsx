@@ -138,6 +138,7 @@ import DDoSDashboard from "./pages/DDoSDashboard";
 import EventsLog from "./pages/EventsLog";
 import HelpPage from "./pages/HelpPage";
 import SettingsPage from "./pages/SettingsPage";
+import PolicyRules from "./pages/PolicyRules";
 
 // Import functions
 import RequireAuth from "./components/common/RequireAuth";
@@ -163,6 +164,7 @@ function App() {
           <Route path="/traffic" element={<TrafficAnalysis />} />
           <Route path="/ddos" element={<DDoSDashboard />} />
           <Route path="/events" element={<EventsLog />} />
+          <Route path="/policy" element={<PolicyRules />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/support" element={<HelpPage />} />
         </Route>

@@ -5,7 +5,8 @@ import {
   LayoutDashboard, 
   Activity, 
   ShieldAlert, 
-  FileText, 
+  FileText,
+  ListChecks, 
   Settings, 
   HelpCircle,
   Hexagon 
@@ -21,6 +22,7 @@ const Sidebar = () => {
     { name: "Traffic Analysis", path: "/traffic", icon: Activity },
     { name: "DDoS Mitigation", path: "/ddos", icon: ShieldAlert },
     { name: "Events Log", path: "/events", icon: FileText },
+    { name: "Policy Rules", path: "/policy", icon: ListChecks },
   ];
 
   const bottomItems = [
