@@ -2,25 +2,45 @@ import time
 import uuid
 import httpx
 from urllib.parse import unquote_plus
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from app.waf.engine import WAFEngine
-from app.waf.decisions import Action, Decision
-from app.settings import settings
+from app.waf.decisions import Action
 from app.proxy.normalization import NormalizedRequest, safe_unquote, normalize_path, normalize_body_text
 from app.waf.ai_features import extract_features
 from app.waf.ai_dataset import append_request_row as append_baseline
-from app.models.policy_model import PolicyModel
 
 router = APIRouter()
 waf = WAFEngine()
+
+
+def _get_waf_mode(request: Request) -> str:
+    """
+    Read waf_mode from DB-backed runtime config stored in app.state.
+    Returns: "shadow" or "protect" (defaults to protect)
+    """
+    cfg = getattr(request.app.state, "waf_config", None)
+    if not cfg:
+        return ""  # indicate not configured
+    mode = (cfg.get("waf_mode") or "protect").strip().lower()
+    if mode not in ("shadow", "protect"):
+        mode = "protect"
+    return mode
 
 
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def handle_all(request: Request, path: str):
     request_id = str(uuid.uuid4())
     start = time.perf_counter()
+
+    # ✅ require config before proxying traffic
+    waf_mode = _get_waf_mode(request)
+    if not waf_mode:
+        return PlainTextResponse(
+            "WAF is not configured yet. Please complete setup.",
+            status_code=503,
+        )
 
     # ===== RAW PATH (ASGI, untouched) =====
     raw_path_bytes = request.scope.get("raw_path", b"")
@@ -34,23 +54,19 @@ async def handle_all(request: Request, path: str):
     raw_query = request.scope.get("query_string", b"").decode("utf-8", errors="surrogateescape")
     decoded_query = unquote_plus(raw_query)
 
-   # ===== BODY SIZE (header) =====
+    # ===== BODY SIZE (header) =====
     content_length = request.headers.get("content-length")
     body_len = int(content_length) if content_length and content_length.isdigit() else 0
 
     # ===== BODY (read once, cache full for forwarding, sample for features) =====
-    MAX_BODY_BYTES = 64 * 1024  # 64KB sample cap for feature extraction only
-
     body_text = ""
 
     if request.method in ("POST", "PUT", "PATCH"):
         try:
             body_full = await request.body()               # FULL body (bytes)
             request.state.cached_body = body_full          # used by proxy.forward()
-
             body_len = len(body_full)                      # authoritative size
 
-            # Only extract text from likely-text content types
             content_type = request.headers.get("content-type", "").lower()
             if content_type.startswith((
                 "application/json",
@@ -58,16 +74,14 @@ async def handle_all(request: Request, path: str):
                 "text/",
                 "application/xml",
             )):
-                # body_sample = body_full[:MAX_BODY_BYTES]   # sample only
                 body_text = body_full.decode("utf-8", errors="ignore")
                 body_text = normalize_body_text(body_text)
             else:
-                body_text = ""  # binary / unknown → skip text inspection
-
+                body_text = ""
         except Exception:
             request.state.cached_body = b""
             body_text = ""
-    
+
     # ===== BUILD NORMALIZED REQUEST =====
     req_norm = NormalizedRequest(
         method=request.method,
@@ -77,27 +91,22 @@ async def handle_all(request: Request, path: str):
         query=decoded_query,
         headers=dict(request.headers),
         client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
         body_len=body_len,
         body_text=body_text
     )
 
-    # ===== WAF DECISION/POLICY DECISION=====
-    policy_match = PolicyModel.get_policy_for_ip(req_norm.client_ip)
-    if policy_match:
-        if policy_match["list_type"] == "whitelist":
-            decision = Decision(Action.ALLOW, [f"IP_ALLOWLIST:{policy_match.get('reason') or 'manual'}"])
-        else:
-            decision = Decision(Action.BLOCK, [f"IP_BLOCKLIST:{policy_match.get('reason') or 'manual'}"])
-    else:
-        decision = waf.evaluate(req_norm)
-    effective_action = decision.action
-
-    if settings.WAF_MODE == "shadow" and effective_action != Action.ALLOW:
-        effective_action = Action.ALLOW
-
     logger = request.app.state.logging_service
 
-    # ===== AI: baseline collection (always) + scoring (only if model ready) =====
+    # ===== WAF DECISION/POLICY DECISION =====
+    decision = waf.evaluate(req_norm)
+    effective_action = decision.action
+
+    # ✅ Shadow mode: allow everything (but still log reasons)
+    if waf_mode == "shadow" and effective_action != Action.ALLOW:
+        effective_action = Action.ALLOW
+
+    # ===== AI: baseline collection + scoring =====
     anomaly_ai = getattr(request.app.state, "anomaly_ai_scorer", None)
     anomaly_score = None
     anomaly_flagged = False
@@ -115,16 +124,7 @@ async def handle_all(request: Request, path: str):
             body_len=req_norm.body_len,
             body_text=body_text,
         )
-        # Filter out noisy traffic from baseline (Socket.IO + static assets)
-        p = (req_norm.normalized_path or "").lower()
-
-        # # IMPORTANT: baseline collection must NOT depend on ai.is_ready()
-        # if decision.action == Action.ALLOW :
-        #     append_baseline(features)
-        #     anomaly_baseline_written = True
-
     except Exception:
-        # Never allow feature extraction/logging to break proxying
         features = None
 
     # Only score if a trained model is loaded
@@ -142,18 +142,22 @@ async def handle_all(request: Request, path: str):
             anomaly_score = None
             anomaly_flagged = False
 
-    # IMPORTANT: baseline collection must NOT depend on ai.is_ready()
-    if (decision.action == Action.ALLOW) and not anomaly_flagged :
-        append_baseline(features) # write to ai_requests.jsonl file
-        anomaly_baseline_written = True
+    # Baseline collection (only if we actually have features)
+    if features is not None and (decision.action == Action.ALLOW) and not anomaly_flagged:
+        try:
+            append_baseline(features)
+            anomaly_baseline_written = True
+        except Exception:
+            anomaly_baseline_written = False
 
     # ===== BLOCK =====
     if effective_action == Action.BLOCK:
         latency_ms = int((time.perf_counter() - start) * 1000)
         logger.log_event({
             "request_id": request_id,
-            "mode": settings.WAF_MODE,
+            "mode": waf_mode,
             "client_ip": req_norm.client_ip,
+            "user_agent": req_norm.user_agent,
             "method": req_norm.method,
             "raw_target_wire": req_norm.raw_target_wire,
             "decoded_path": req_norm.decoded_path,
@@ -180,8 +184,9 @@ async def handle_all(request: Request, path: str):
         latency_ms = int((time.perf_counter() - start) * 1000)
         logger.log_event({
             "request_id": request_id,
-            "mode": settings.WAF_MODE,
+            "mode": waf_mode,
             "client_ip": req_norm.client_ip,
+            "user_agent": req_norm.user_agent,
             "method": req_norm.method,
             "raw_target_wire": req_norm.raw_target_wire,
             "decision": {
@@ -190,7 +195,7 @@ async def handle_all(request: Request, path: str):
                 "status_code": 429,
             },
             "ai": {
-                "model_ready": bool(anomaly_ai and hasattr(ai, "is_ready") and anomaly_ai.is_ready()),
+                "model_ready": bool(anomaly_ai and hasattr(anomaly_ai, "is_ready") and anomaly_ai.is_ready()),
                 "score": anomaly_score,
                 "flagged": anomaly_flagged,
                 "baseline_written": anomaly_baseline_written,
@@ -208,15 +213,18 @@ async def handle_all(request: Request, path: str):
         resp = await proxy.forward(request)
         upstream_status = resp.status_code
         return resp
+
     except httpx.RequestError as e:
         error = f"{type(e).__name__}: {e}"
         return PlainTextResponse("Upstream error", status_code=502)
+
     finally:
         latency_ms = int((time.perf_counter() - start) * 1000)
         logger.log_event({
             "request_id": request_id,
-            "mode": settings.WAF_MODE,
+            "mode": waf_mode,
             "client_ip": req_norm.client_ip,
+            "user_agent": req_norm.user_agent,
             "method": req_norm.method,
             "raw_target_wire": req_norm.raw_target_wire,
             "decision": {

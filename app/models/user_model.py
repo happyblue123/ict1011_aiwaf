@@ -6,21 +6,29 @@ from fastapi import HTTPException
 
 class UserModel:
     @staticmethod
-    def create_user(waf_id: int, username: str, password: str, role: str = "admin") -> int:
-        pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    def create_user(waf_id: int, username: str, password: str, role: str = "admin", conn=None):
+        close_conn = False
+        if conn is None:
+            conn = get_conn()
+            close_conn = True
 
-        sql = """
-        INSERT INTO users (waf_id, username, password_hash, role)
-        VALUES (%s, %s, %s, %s)
-        """
-        conn = get_conn()
         try:
+            pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
             with conn.cursor() as cur:
-                cur.execute(sql, (waf_id, username, pw_hash, role))
-                return int(cur.lastrowid)
+                cur.execute(
+                    """
+                    INSERT INTO users (waf_id, username, password_hash, role)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (waf_id, username, pw_hash, role),
+                )
         except Exception as e:
-            # common: duplicate username
-            raise HTTPException(status_code=400, detail=f"Failed to create user: {e}")
+            # keep message safe if you want, but raise up
+            raise Exception(f"Failed to create user: {e}")
+        finally:
+            if close_conn:
+                conn.close()
     
     @staticmethod
     def authenticate(username: str, password: str):

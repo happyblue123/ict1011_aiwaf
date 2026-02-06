@@ -1,31 +1,53 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
-# 1. Calculate the project root directory
-# __file__ = .../Local Save/app/settings.py
-# .parent  = .../Local Save/app
-# .parent  = .../Local Save (The Root)
+
+def derive_origin_base_url(target_host: str) -> str:
+    """
+    Convert canonical target_host into origin base URL.
+
+    Examples:
+      "1.1.1.1:80"   -> "http://1.1.1.1:80"
+      "example.com:443" -> "https://example.com:443"
+    """
+    host, port_str = target_host.rsplit(":", 1)
+    port = int(port_str)
+
+    scheme = "https" if port == 443 else "http"
+    return f"{scheme}://{host}:{port}"
+
+
+# =========================================================
+# Project paths
+# =========================================================
+
+# __file__ = .../app/settings.py
+# parent   = .../app
+# parent   = project root
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# 2. Point to the .env file inside the "Server" folder
+# .env lives in <project-root>/Server/.env
 ENV_PATH = BASE_DIR / "Server" / ".env"
 
+
+# =========================================================
+# Static / boot-time configuration ONLY
+# =========================================================
+
 class Settings(BaseSettings):
-    # 3. Tell Pydantic to use the absolute path we calculated
     model_config = SettingsConfigDict(
-        env_file=ENV_PATH, 
-        extra="ignore"
+        env_file=ENV_PATH,
+        extra="ignore",
     )
 
-    ORIGIN_BASE_URL: str = "http://127.0.0.1:5000"
-    WAF_MODE: str = "protect"
-
+    # Logging
     LOG_DIR: str = "logs"
     ACCESS_LOG_FILE: str = "access.jsonl"
 
+    # Database (used before DB bootstrap + during runtime)
     DB_HOST: str = "127.0.0.1"
     DB_USER: str = "root"
-    DB_PASSWORD: str = "password"  # This will be overwritten by .env
+    DB_PASSWORD: str = "password"  # overridden by .env
     DB_NAME: str = "neurowaf_db"
     DB_PORT: int = 3306
 
