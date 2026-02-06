@@ -29,5 +29,4 @@ beautifulsoup4
 react
 axios
 tailwindcss
-beautifulsoup4 
 requests
