@@ -91,6 +91,7 @@ async def handle_all(request: Request, path: str):
         query=decoded_query,
         headers=dict(request.headers),
         client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
         body_len=body_len,
         body_text=body_text
     )
@@ -156,6 +157,7 @@ async def handle_all(request: Request, path: str):
             "request_id": request_id,
             "mode": waf_mode,
             "client_ip": req_norm.client_ip,
+            "user_agent": req_norm.user_agent,
             "method": req_norm.method,
             "raw_target_wire": req_norm.raw_target_wire,
             "decoded_path": req_norm.decoded_path,
@@ -184,6 +186,7 @@ async def handle_all(request: Request, path: str):
             "request_id": request_id,
             "mode": waf_mode,
             "client_ip": req_norm.client_ip,
+            "user_agent": req_norm.user_agent,
             "method": req_norm.method,
             "raw_target_wire": req_norm.raw_target_wire,
             "decision": {
@@ -221,6 +224,7 @@ async def handle_all(request: Request, path: str):
             "request_id": request_id,
             "mode": waf_mode,
             "client_ip": req_norm.client_ip,
+            "user_agent": req_norm.user_agent,
             "method": req_norm.method,
             "raw_target_wire": req_norm.raw_target_wire,
             "decision": {

@@ -118,3 +118,55 @@ class PolicyModel:
             }
 
         return None
+    
+    @staticmethod
+    def fetch_active_rules(list_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetch only active (non-expired) rules.
+        """
+        sql = """
+        SELECT rule_id, list_type, ip_address, reason, created_by, expires_at, created_at, updated_at
+        FROM ip_policy_rules
+        WHERE (expires_at IS NULL OR expires_at > NOW())
+        {and_clause}
+        ORDER BY created_at DESC
+        """
+
+        and_clause = ""
+        params: tuple[Any, ...] = ()
+        if list_type:
+            and_clause = "AND list_type = %s"
+            params = (list_type,)
+
+        sql = sql.format(and_clause=and_clause)
+
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                return cur.fetchall() or []
+        finally:
+            conn.close()
+        
+    @staticmethod
+    def count_active_by_type() -> Dict[str, int]:
+        sql = """
+            SELECT list_type, COUNT(*) AS c
+            FROM ip_policy_rules
+            WHERE (expires_at IS NULL OR expires_at > NOW())
+            GROUP BY list_type
+        """
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+
+        out = {"whitelist": 0, "blacklist": 0}
+        for r in rows:
+            t = r.get("list_type")
+            if t in out:
+                out[t] = int(r.get("c") or 0)
+        return out

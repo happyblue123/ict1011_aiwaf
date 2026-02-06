@@ -29,6 +29,7 @@ from app.controllers.policy_controller import PolicyController
 from app.services.traffic_analysis_service import TrafficAnalysisService
 
 from app.controllers.ddos_controller import DdosController
+from app.controllers.overview_controller import OverviewController
 
 from app.db.db_bootstrap import (
     ensure_database_and_schema,
@@ -219,9 +220,18 @@ def create_policy_entry(payload: PolicyRuleCreate):
 def delete_policy_entry(rule_id: int):
     return PolicyController.delete_rule(rule_id)
 
-@router.get("/overview")
-def overview():
-    return
+@router.get("/get-overview")
+def overview(
+    range: str = Query("24h", pattern="^(24h|7d)$"),
+    recent_limit: int = Query(50, ge=1, le=200),
+):
+    """
+    Used by Overview.jsx:
+      GET /api/get-overview?range=24h&recent_limit=50
+    """
+    data = OverviewController.get_overview(range=range, recent_limit=recent_limit)
+    print(data)
+    return data
 
 @router.get("/traffic/analysis")
 def traffic_analysis(

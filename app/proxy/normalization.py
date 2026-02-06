@@ -81,5 +81,6 @@ class NormalizedRequest:
     query: str
     headers: Dict[str, str]
     client_ip: Optional[str]
+    user_agent: str
     body_len: int
     body_text: str

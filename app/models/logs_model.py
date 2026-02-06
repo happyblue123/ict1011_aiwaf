@@ -205,3 +205,31 @@ class LogsModel:
             obj = raw if isinstance(raw, dict) else json.loads(raw)
             out.append(obj)
         return out
+
+    @staticmethod
+    def fetch_latest_event_rows(limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Fetch latest rows from event_logs for 'Recent Events' panel.
+        Returns: [{"log_id":..., "raw_log": <dict>}, ...]
+        """
+        sql = """
+            SELECT log_id, raw_log
+            FROM event_logs
+            ORDER BY log_id DESC
+            LIMIT %s
+        """
+
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, (int(limit),))
+                rows = cur.fetchall() or []
+        finally:
+            conn.close()
+
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            raw = r.get("raw_log")
+            obj = raw if isinstance(raw, dict) else json.loads(raw)
+            out.append({"log_id": r["log_id"], "raw_log": obj})
+        return out
