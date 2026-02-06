@@ -1,9 +1,8 @@
 from __future__ import annotations
-from urllib.parse import urlparse
 import httpx
-from fastapi import Request, Response
-from app.settings import settings
+from fastapi import Request, Response, HTTPException
 
+from app.settings import derive_origin_base_url
 
 HOP_BY_HOP_HEADERS = {
     "host",
@@ -39,6 +38,28 @@ class ProxyService:
         if self.client is None:
             raise RuntimeError("ProxyService not started")
 
+        # ✅ Load active waf config from app.state (set in main.py startup + refreshed after setup)
+        cfg = getattr(request.app.state, "waf_config", None)
+        if not cfg:
+            raise HTTPException(
+                status_code=503,
+                detail="WAF is not configured yet. Please complete setup."
+            )
+
+        target_host = (cfg.get("target_host") or "").strip()   # "host:port"
+        waf_mode = (cfg.get("waf_mode") or "protect").strip().lower()
+
+        if ":" not in target_host:
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid WAF configuration in database (target_host missing/invalid)."
+            )
+
+        if waf_mode not in ("shadow", "protect"):
+            waf_mode = "protect"  # safe default
+
+        origin_base_url = derive_origin_base_url(target_host)
+
         raw_path = request.scope.get("raw_path", b"").decode("utf-8", errors="surrogateescape")
         raw_query = request.scope.get("query_string", b"").decode("utf-8", errors="surrogateescape")
         raw_target_wire = raw_path + (("?" + raw_query) if raw_query else "")
@@ -50,34 +71,34 @@ class ProxyService:
         headers.pop("content-length", None)
         headers.pop("transfer-encoding", None)
         headers.pop("accept-encoding", None)
-        
+
         # If body was already read by WAF/controller, forward that exact bytes
         cached = getattr(request.state, "cached_body", None)
         if cached is not None:
             content = cached
         else:
-            # Otherwise we can stream it (no prior consumption)
             async def body_stream():
                 async for chunk in request.stream():
                     yield chunk
             content = body_stream()
 
-        upstream_url = settings.ORIGIN_BASE_URL.rstrip("/") + raw_target_wire
+        # ✅ derive upstream_url from DB-backed config
+        upstream_url = origin_base_url.rstrip("/") + raw_target_wire
 
         async with self.client.stream(
             method=request.method,
             url=upstream_url,
             headers=headers,
-            content=content,   # <-- either bytes or async generator
+            content=content,
         ) as upstream_resp:
             resp_headers = {k: v for k, v in upstream_resp.headers.items() if k.lower() not in HOP_BY_HOP_HEADERS}
             resp_content = await upstream_resp.aread()
 
-            # ✅ CRITICAL: don't forward these; Starlette will set correct Content-Length
+            # ✅ don't forward these; Starlette will set correct Content-Length
             resp_headers.pop("content-length", None)
             resp_headers.pop("transfer-encoding", None)
 
-            # ✅ CRITICAL: httpx may have decompressed the body; don't lie to the client
+            # ✅ httpx may have decompressed the body; don't lie to the client
             resp_headers.pop("content-encoding", None)
 
             return Response(
