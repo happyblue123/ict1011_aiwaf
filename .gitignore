@@ -6,6 +6,8 @@ __pycache__/
 *.pyc
 *access.jsonl
 *ai_requests.jsonl
+*ai_model.joblib
+*ae_model.keras
 
 #Environment Variables
 .env
