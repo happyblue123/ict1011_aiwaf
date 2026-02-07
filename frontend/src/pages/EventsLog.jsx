@@ -15,10 +15,6 @@ const EventsLog = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters
-  const [filterType, setFilterType] = useState("All");
-  const [attackTypes, setAttackTypes] = useState([]);
-
   // Time filters
   const [timeMode, setTimeMode] = useState("preset");
   const [timePreset, setTimePreset] = useState("24h");
@@ -53,17 +49,6 @@ const EventsLog = () => {
     }
   };
 
-  const fetchFilters = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/filters`, { credentials: "include" });
-      const data = await res.json();
-      setAttackTypes(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error(err);
-      setAttackTypes([]);
-    }
-  };
-
   const fetchLogs = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true);
 
@@ -71,7 +56,6 @@ const EventsLog = () => {
       const isLive = (timeMode === "preset" && timePreset === "live");
 
       const queryParams = {
-        attack_type: filterType,
         limit: ITEMS_PER_PAGE,
         page: isLive ? 1 : currentPage,   // ✅ force page 1 for live
         time_mode: timeMode,
@@ -114,11 +98,8 @@ const EventsLog = () => {
     }
   };
 
-  // initial load
-  useEffect(() => { fetchFilters(); }, []);
-
   // reset page when filters change (but live forces page 1 anyway)
-  useEffect(() => { setCurrentPage(1); }, [filterType, timeMode, timePreset, startDate, endDate]);
+  useEffect(() => { setCurrentPage(1); }, [timeMode, timePreset, startDate, endDate]);
 
   // fetch + live polling
   useEffect(() => {
@@ -135,7 +116,7 @@ const EventsLog = () => {
       clearTimeout(timer);
       if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
     };
-  }, [filterType, timeMode, timePreset, startDate, endDate, currentPage, liveStartTime]);
+  }, [timeMode, timePreset, startDate, endDate, currentPage, liveStartTime]);
 
   return (
     <div className="space-y-6 relative pb-10">
@@ -221,17 +202,6 @@ const EventsLog = () => {
             </div>
           )}
 
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-700 focus:outline-none"
-          >
-            <option value="All">All Attack Types</option>
-            {attackTypes.map(t => (
-              <option key={t} value={t}>{t === 'None' ? 'Normal Traffic' : t}</option>
-            ))}
-          </select>
-
           <button onClick={() => fetchLogs()} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">
             <RefreshCw size={18} className={timePreset === 'live' ? "animate-spin" : ""} />
           </button>
@@ -248,7 +218,7 @@ const EventsLog = () => {
                 <th className="px-6 py-4">Source</th>
                 <th className="px-6 py-4">Destination</th>
                 <th className="px-6 py-4">Method</th>
-                <th className="px-6 py-4">Params</th>
+                <th className="px-6 py-4">Request URI</th>
                 <th className="px-6 py-4">Attack Type</th>
                 <th className="px-6 py-4">Action</th>
                 <th className="px-6 py-4 text-center">Inspect</th>
@@ -277,7 +247,9 @@ const EventsLog = () => {
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">
                       <Server size={14} className="text-gray-400" />
-                      <span className="font-mono text-gray-600">{log.destination_ip}</span>
+                      <span className="font-mono text-gray-600">
+                        {log.destination_ip || "—"}
+                      </span>
                     </div>
                   </td>
 
@@ -288,16 +260,30 @@ const EventsLog = () => {
                   </td>
 
                   <td className="px-6 py-3">
-                    <div className="text-[11px] text-gray-600 font-mono truncate max-w-[220px]" title={log.request_params || ""}>
-                      {log.request_params || "—"}
+                    <div
+                      className="font-mono text-[11px] text-gray-700 truncate max-w-[260px]"
+                      title={log.request_path || ""}
+                    >
+                      {log.request_path || "—"}
                     </div>
                   </td>
 
                   <td className="px-6 py-3">
-                    <span className={`text-xs font-semibold ${log.attack_type === 'None' ? 'text-gray-400' : 'text-red-600'}`}>
-                      {log.attack_type === 'None' ? 'Clean' : log.attack_type}
+                    <span
+                      className={`text-xs font-bold ${
+                        log.attack_type === 'None'
+                          ? 'text-gray-400'
+                          : log.attack_type === 'baseline_allow'
+                            ? 'text-gray-300'
+                            : 'text-red-600'
+                      }`}
+                    >
+                      {log.attack_type === 'baseline_allow'
+                        ? '—'
+                        : log.attack_type === 'None'
+                          ? 'Clean'
+                          : log.attack_type}
                     </span>
-                    <div className="text-[10px] text-gray-400 truncate max-w-[150px]">{log.request_path}</div>
                   </td>
 
                   <td className="px-6 py-3">

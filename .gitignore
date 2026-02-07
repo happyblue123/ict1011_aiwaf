@@ -7,7 +7,6 @@ __pycache__/
 *access.jsonl
 *ai_requests.jsonl
 
-
 #Environment Variables
 .env
 .env.local

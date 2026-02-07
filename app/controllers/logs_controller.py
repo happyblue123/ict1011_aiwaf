@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 import json
-
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 from datetime import datetime, timedelta, timezone
 
 from app.models.logs_model import LogsModel
@@ -42,17 +41,33 @@ class LogsController:
         decision = raw.get("decision") or {}
         reasons = decision.get("reasons") or []
 
-        # ---- attack type ----
+        # ---- attack type (DISPLAY ONLY, no filtering) ----
+        # Use first meaningful reason, but if only baseline_allow exists, show baseline_allow
         attack_type = "None"
         if reasons:
-            first = str(reasons[0])
-            attack_type = first.split(":")[0] if ":" in first else first
+            # try to find a non-baseline reason first
+            picked = None
+            for r in reasons:
+                s = str(r)
+                head = s.split(":")[0] if ":" in s else s
+                if head == "baseline_allow":
+                    continue
+                picked = head
+                break
+
+            if picked is None:
+                # fallback to first reason (often baseline_allow)
+                s0 = str(reasons[0])
+                head0 = s0.split(":")[0] if ":" in s0 else s0
+                picked = head0
+
+            attack_type = picked
 
         # ---- action taken ----
-        action = (decision.get("action") or "allow").lower()
-        if action == "block":
+        action_raw = (decision.get("effective_action") or decision.get("action") or "allow").lower()
+        if action_raw == "block":
             action_taken = "BLOCKED"
-        elif action == "flag":
+        elif action_raw == "flag":
             action_taken = "FLAGGED"
         else:
             action_taken = "ALLOWED"
@@ -61,7 +76,6 @@ class LogsController:
         http_method = (raw.get("method") or "—").upper()
 
         # ---- request params (querystring) ----
-        # Prefer raw["query"] if present, else extract from raw_target_wire
         request_params = raw.get("query") or ""
         raw_target_wire = raw.get("raw_target_wire") or ""
 
@@ -81,45 +95,50 @@ class LogsController:
             or "/"
         )
 
+        # ---- destination ----
+        dest = raw.get("destination")
+        dest_target = None
+        if isinstance(dest, dict):
+            dest_target = dest.get("target")
+
+        destination_ip = dest_target or raw.get("destination_ip") or "waf"
+
         return {
             "id": log_id,
-            "timestamp": raw.get("ts"),                 # keep ISO string
+            "timestamp": raw.get("ts"),
             "source_ip": raw.get("client_ip", "unknown"),
-            "destination_ip": raw.get("destination_ip", "waf"),
+            "destination_ip": destination_ip,
             "geo_location": raw.get("geo_location", "N/A"),
 
-            # ✅ new fields for your table
             "http_method": http_method,
             "request_params": request_params,
-
-            "attack_type": attack_type,
-            "action_taken": action_taken,
             "request_path": request_path,
 
-            # optional for inspector modal
+            # ✅ keep attack_type for UI display
+            "attack_type": attack_type,
+            "action_taken": action_taken,
+
             "raw_log": raw,
         }
 
     @staticmethod
     def get_logs(
         search: str,
-        attack_type: str,
         limit: int,
         page: int,
         time_mode: str,
         time_preset: str,
         start_date: Optional[str],
         end_date: Optional[str],
-        cursor_id: Optional[int] = None,   # ✅ add this
+        cursor_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         since_utc: Optional[datetime] = None
         until_utc: Optional[datetime] = None
 
-        # ✅ NEW: live uses cursor_id, not datetime
         live_cursor_id: Optional[int] = None
         if time_mode == "preset":
             if time_preset == "live":
-                live_cursor_id = cursor_id  # can be None -> means "from newest"
+                live_cursor_id = cursor_id
             else:
                 since_utc = LogsController._preset_to_since(time_preset)
 
@@ -135,13 +154,10 @@ class LogsController:
 
         rows, total = LogsModel.fetch_logs(
             search=search,
-            attack_type=attack_type,
             since_utc=since_utc,
             until_utc=until_utc,
             limit=limit,
             page=page,
-
-            # ✅ pass cursor to model
             cursor_id=live_cursor_id,
             is_live=(time_mode == "preset" and time_preset == "live"),
         )
@@ -158,7 +174,3 @@ class LogsController:
                 "total_pages": total_pages,
             },
         }
-
-    @staticmethod
-    def get_attack_types():
-        return LogsModel.fetch_attack_types()

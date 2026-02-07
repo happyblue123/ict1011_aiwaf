@@ -58,7 +58,6 @@ class LogsModel:
     @staticmethod
     def fetch_logs(
         search: str,
-        attack_type: str,
         since_utc: Optional[datetime],
         until_utc: Optional[datetime],
         limit: int,
@@ -69,7 +68,6 @@ class LogsModel:
         where = []
         params = []
 
-        # (your existing search/attack_type filters here...)
 
         if is_live:
             # If cursor_id is None, start from "now" by returning nothing initially.

@@ -42,6 +42,30 @@ async def handle_all(request: Request, path: str):
             status_code=503,
         )
 
+     # ✅ capture protected target for logging (real destination)
+    cfg = getattr(request.app.state, "waf_config", None) or {}
+
+    target_host = (
+        cfg.get("target_host")
+        or cfg.get("app_host")
+        or cfg.get("protected_host")
+        or cfg.get("ip_address")
+        or cfg.get("ip")
+    )
+
+    target_port = (
+        cfg.get("target_port")
+        or cfg.get("app_port")
+        or cfg.get("protected_port")
+        or cfg.get("port")
+    )
+
+    protected_target = ""
+    if target_host and target_port:
+        protected_target = f"{target_host}:{target_port}"
+    elif target_host:
+        protected_target = str(target_host)
+
     # ===== RAW PATH (ASGI, untouched) =====
     raw_path_bytes = request.scope.get("raw_path", b"")
     raw_path_wire = raw_path_bytes.decode("utf-8", errors="surrogateescape")
@@ -159,6 +183,9 @@ async def handle_all(request: Request, path: str):
             "client_ip": req_norm.client_ip,
             "user_agent": req_norm.user_agent,
             "method": req_norm.method,
+            "destination": {
+                "target": protected_target,   # e.g. "127.0.0.1:5000"
+            },
             "raw_target_wire": req_norm.raw_target_wire,
             "decoded_path": req_norm.decoded_path,
             "normalized_path": req_norm.normalized_path,
@@ -188,6 +215,9 @@ async def handle_all(request: Request, path: str):
             "client_ip": req_norm.client_ip,
             "user_agent": req_norm.user_agent,
             "method": req_norm.method,
+            "destination": {
+                "target": protected_target,   # e.g. "127.0.0.1:5000"
+            },
             "raw_target_wire": req_norm.raw_target_wire,
             "decision": {
                 "action": decision.action,
@@ -226,6 +256,9 @@ async def handle_all(request: Request, path: str):
             "client_ip": req_norm.client_ip,
             "user_agent": req_norm.user_agent,
             "method": req_norm.method,
+            "destination": {
+                "target": protected_target,   # e.g. "127.0.0.1:5000"
+            },
             "raw_target_wire": req_norm.raw_target_wire,
             "decision": {
                 "action": decision.action,

@@ -220,7 +220,6 @@ def setupwaf(payload: SetupWAFRequest, request: Request):
 @router.get("/logs")
 def get_logs(
     search: str = "",
-    attack_type: str = "All",
     limit: int = 20,
     page: int = 1,
     time_mode: str = "preset",
@@ -230,7 +229,6 @@ def get_logs(
 ):
     return LogsController.get_logs(
         search=search,
-        attack_type=attack_type,
         limit=limit,
         page=page,
         time_mode=time_mode,
@@ -239,9 +237,6 @@ def get_logs(
         end_date=end_date,
     )
 
-@router.get("/filters")
-def filters():
-    return LogsController.get_attack_types()
 
 @router.get("/policy/entries")
 def list_policy_entries(list_type: Optional[str] = None):
