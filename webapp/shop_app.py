@@ -5,6 +5,7 @@ import platform
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
+DB_FILE = "shop.db"
 
 # --- DATABASE SETUP ---
 def init_db():
