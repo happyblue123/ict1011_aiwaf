@@ -8,6 +8,7 @@ import {
   Target,
   AlertTriangle,
   RefreshCw,
+  Server,
 } from "lucide-react";
 import {
   BarChart,
@@ -25,17 +26,21 @@ import {
 
 export default function Overview() {
   const [logs, setLogs] = useState([]);
-  // NEW: Add state for IP Policy Counts
   const [ipCounts, setIpCounts] = useState({ whitelist: 0, blacklist: 0 });
+  const [aiStats, setAiStats] = useState({
+    baseline_count: 0,
+    last_trained_at: null,
+  });
   const [loading, setLoading] = useState(true);
 
+  // 1. Fetch & Parse Data
   const fetchLogs = async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/get-overview");
       const data = await response.json();
 
-      // ... existing log parsing logic ...
+      // Parse Logs
       const parsedLogs = (data.recent_events || [])
         .map((event) => event.raw_log)
         .filter(Boolean)
@@ -43,8 +48,16 @@ export default function Overview() {
 
       setLogs(parsedLogs);
 
-      // NEW: Set IP Policy Counts from API
+      // Parse IP Counts
       setIpCounts(data.ip_policy_counts || { whitelist: 0, blacklist: 0 });
+
+      // Parse AI Training Stats (Coming from retrain_state.json via API)
+      setAiStats(
+        data.ai_training_stats || {
+          baseline_count: 0,
+          last_trained_at: null,
+        },
+      );
     } catch (error) {
       console.error("Failed to load logs:", error);
     } finally {
@@ -56,22 +69,18 @@ export default function Overview() {
     fetchLogs();
   }, []);
 
-  // 2. Compute Metrics (Memoized for performance)
+  // 2. Compute Metrics
   const stats = useMemo(() => {
     const total = logs.length;
     const blocked = logs.filter((l) => l.decision?.action === "block").length;
     const aiFlagged = logs.filter((l) => l.ai?.flagged).length;
     const monitor = logs.filter((l) => l.mode === "monitor").length;
-
-    // Calculate Block Rate
     const blockRate = total > 0 ? ((blocked / total) * 100).toFixed(1) : 0;
-
     return { total, blocked, aiFlagged, monitor, blockRate };
   }, [logs]);
 
   // 3. Prepare Chart Data
   const timelineData = useMemo(() => {
-    // Group by Minute (HH:MM)
     const grouped = {};
     logs.forEach((log) => {
       const time = new Date(log.ts).toLocaleTimeString([], {
@@ -79,16 +88,12 @@ export default function Overview() {
         minute: "2-digit",
       });
       if (!grouped[time]) grouped[time] = { time, signature: 0, aiAnomaly: 0 };
-
-      // Categorize: If blocked by AI reason vs Standard reason
-      // (Simplified logic: if AI flagged it, count as AI, otherwise Signature)
       if (log.ai?.flagged) {
         grouped[time].aiAnomaly += 1;
       } else if (log.decision?.action === "block") {
         grouped[time].signature += 1;
       }
     });
-    // Return last 10 minutes or all data
     return Object.values(grouped).slice(-15);
   }, [logs]);
 
@@ -96,20 +101,17 @@ export default function Overview() {
     const counts = {};
     logs.forEach((log) => {
       if (log.decision?.action === "block") {
-        // Extract primary reason (e.g. "sqli" from "sqli:boolean_based")
         const type = log.decision?.reasons?.[0]?.split(":")[0] || "Unknown";
         counts[type] = (counts[type] || 0) + 1;
       }
     });
-
     return Object.entries(counts).map(([name, value]) => ({
       name: name.toUpperCase(),
       value,
     }));
   }, [logs]);
 
-  const COLORS = ["#F59E0B", "#EF4444", "#8B5CF6", "#10B981", "#3B82F6"];
-
+  // IP Policy Chart Data
   const ipPolicyData = useMemo(
     () => [
       { name: "Whitelist", value: ipCounts.whitelist },
@@ -118,7 +120,8 @@ export default function Overview() {
     [ipCounts],
   );
 
-  const IP_COLORS = ["#10B981", "#EF4444"]; // Emerald for Allow, Red for Block
+  const COLORS = ["#F59E0B", "#EF4444", "#8B5CF6", "#10B981", "#3B82F6"];
+  const IP_COLORS = ["#10B981", "#EF4444"];
 
   if (loading) {
     return (
@@ -130,8 +133,8 @@ export default function Overview() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* 1. Header & Actions */}
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      {/* HEADER */}
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-bold text-gray-800 tracking-tight">
@@ -149,10 +152,10 @@ export default function Overview() {
         </button>
       </div>
 
-      {/* 2. KPI Cards */}
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Traffic */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between relative overflow-hidden">
+        {/* Total Traffic */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
               Total Requests
@@ -169,7 +172,7 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Card 2: Threats Blocked */}
+        {/* Threats Blocked */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
@@ -187,7 +190,7 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Card 3: AI Detections */}
+        {/* AI Anomalies */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
@@ -205,7 +208,7 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Card 4: System Health */}
+        {/* System Health */}
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
@@ -224,9 +227,9 @@ export default function Overview() {
         </div>
       </div>
 
-      {/* 3. Main Charts Section */}
+      {/* MAIN CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Hybrid Timeline (2/3 width) */}
+        {/* Timeline */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -244,7 +247,6 @@ export default function Overview() {
               </span>
             </div>
           </div>
-
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={timelineData} barSize={12}>
@@ -289,7 +291,7 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* Right: Attack Distribution (1/3 width) */}
+        {/* Attack Distribution */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
           <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
             <Target size={18} className="text-red-500" /> Threat Vectors
@@ -297,7 +299,6 @@ export default function Overview() {
           <p className="text-xs text-gray-500 mb-6">
             Distribution by attack category.
           </p>
-
           <div className="flex-1 w-full min-h-[250px] relative">
             {attackDistData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -333,8 +334,6 @@ export default function Overview() {
                 <span className="text-sm">No threats detected yet</span>
               </div>
             )}
-
-            {/* Center Text for Donut */}
             {attackDistData.length > 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
                 <span className="text-3xl font-bold text-gray-800">
@@ -349,15 +348,15 @@ export default function Overview() {
         </div>
       </div>
 
-      {/* 4. High Risk Endpoints (Dynamic List) */}
+      {/* 4. THREE COLUMN BOTTOM LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: High Risk Endpoints (Takes 2/3 width) */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
+        {/* COL 1: High Risk Endpoints */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
             <AlertTriangle size={18} className="text-orange-500" /> High-Risk
-            Endpoints
+            Paths
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-3">
             {Object.entries(
               logs
                 .filter((l) => l.decision?.action === "block")
@@ -369,52 +368,50 @@ export default function Overview() {
                 }, {}),
             )
               .sort((a, b) => b[1] - a[1])
-              .slice(0, 4)
+              .slice(0, 4) // Show top 4
               .map(([path, count], idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
+                  className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-100"
                 >
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="font-mono text-xs text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded border border-orange-200 shrink-0">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="font-mono text-[10px] text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded border border-orange-200 shrink-0">
                       #{idx + 1}
                     </div>
                     <div
-                      className="text-sm font-medium text-gray-700 truncate"
+                      className="text-xs font-medium text-gray-700 truncate w-32"
                       title={path}
                     >
                       {path}
                     </div>
                   </div>
-                  <div className="text-xs font-bold text-gray-900 bg-white px-2 py-1 rounded shadow-sm border border-gray-100">
-                    {count} Attacks
+                  <div className="text-[10px] font-bold text-gray-900 bg-white px-1.5 py-0.5 rounded shadow-sm border border-gray-100">
+                    {count}
                   </div>
                 </div>
               ))}
             {stats.blocked === 0 && (
-              <div className="col-span-2 text-center py-4 text-gray-400 text-sm italic">
-                System clean. No high-risk endpoints identified.
+              <div className="text-center py-8 text-gray-400 text-xs italic">
+                No high-risk paths detected.
               </div>
             )}
           </div>
         </div>
 
-        {/* Right: IP Policy Donut Chart (Takes 1/3 width) */}
+        {/* COL 2: IP Policy Donut */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
           <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
             <ShieldAlert size={18} className="text-gray-600" /> IP Enforcement
           </h3>
-          <p className="text-xs text-gray-500 mb-4">
-            Active firewall rules distribution.
-          </p>
+          <p className="text-xs text-gray-500 mb-2">Active firewall rules.</p>
 
-          <div className="flex-1 w-full min-h-[200px] relative">
+          <div className="flex-1 w-full min-h-[160px] relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={ipPolicyData}
-                  innerRadius={55}
-                  outerRadius={75}
+                  innerRadius={50}
+                  outerRadius={70}
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
@@ -426,22 +423,65 @@ export default function Overview() {
                 <Tooltip />
                 <Legend
                   verticalAlign="bottom"
-                  height={36}
+                  height={24}
                   iconType="circle"
                   iconSize={8}
-                  wrapperStyle={{ fontSize: "11px" }}
+                  wrapperStyle={{ fontSize: "10px" }}
                 />
               </PieChart>
             </ResponsiveContainer>
-
-            {/* Center Text for Donut */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
-              <span className="text-2xl font-bold text-gray-800">
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-6">
+              <span className="text-xl font-bold text-gray-800">
                 {ipCounts.whitelist + ipCounts.blacklist}
               </span>
-              <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">
-                Rules
+            </div>
+          </div>
+        </div>
+
+        {/* COL 3: AI Training Stats (FROM retrain_state.json) */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
+          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <BrainCircuit size={18} className="text-purple-500" /> Neuro-Engine
+          </h3>
+
+          <div className="flex-1 flex flex-col justify-center gap-4">
+            {/* Stat 1: Dataset Size */}
+            <div className="p-4 bg-purple-50 rounded-lg border border-purple-100 relative overflow-hidden">
+              <div className="text-xs text-purple-600 font-semibold uppercase tracking-wider mb-1">
+                Training Samples
+              </div>
+              <div className="text-3xl font-bold text-gray-800">
+                {aiStats.baseline_count}
+              </div>
+              <div className="absolute right-0 bottom-0 opacity-10 p-2">
+                <Activity size={64} className="text-purple-900" />
+              </div>
+            </div>
+
+            {/* Stat 2: Last Trained */}
+            <div className="px-4 py-3 bg-gray-50 rounded-lg border border-gray-100">
+              <div className="text-xs text-gray-500 font-medium mb-1">
+                Last Retrained
+              </div>
+              <div className="text-sm font-semibold text-gray-800">
+                {aiStats.last_trained_at
+                  ? new Date(aiStats.last_trained_at).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "Waiting for data..."}
+              </div>
+            </div>
+
+            {/* Live Indicator */}
+            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
               </span>
+              Model Live & Learning
             </div>
           </div>
         </div>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 import logging
+import json
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, Response, Request, HTTPException, Query
@@ -41,6 +43,7 @@ from app.db.db_bootstrap import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+AI_STATE_FILE = Path("app/ai_models/retrain_state.json")
 
 class LoginRequest(BaseModel):
     username: str
@@ -259,8 +262,31 @@ def overview(
     Used by Overview.jsx:
       GET /api/get-overview?range=24h&recent_limit=50
     """
+
+    # Fetch overview data
     data = OverviewController.get_overview(range=range, recent_limit=recent_limit)
+
+    # Load AI training stats from file
+    ai_stats = {
+        "baseline_count": 0, 
+        "last_trained_count": 0,
+        "last_trained_at": None
+    }
+    
+    if AI_STATE_FILE.exists():
+        try:
+            content = AI_STATE_FILE.read_text(encoding="utf-8")
+            if content.strip():
+                ai_stats = json.loads(content)
+        except Exception as e:
+            logger.error(f"Error reading AI state file: {e}")
+
+    # Inject into response
+    if isinstance(data, dict):
+        data["ai_training_stats"] = ai_stats
+
     print(data)
+
     return data
 
 @router.get("/traffic/analysis")
