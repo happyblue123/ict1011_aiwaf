@@ -220,15 +220,16 @@ const EventsLog = () => {
                 <th className="px-6 py-4">Method</th>
                 <th className="px-6 py-4">Request URI</th>
                 <th className="px-6 py-4">Attack Type</th>
+                <th className="px-6 py-4">Anomaly</th>
                 <th className="px-6 py-4">Action</th>
                 <th className="px-6 py-4 text-center">Inspect</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
               {loading ? (
-                <tr><td colSpan="8" className="p-8 text-center text-gray-500">Loading events...</td></tr>
+                <tr><td colSpan="9" className="p-8 text-center text-gray-500">Loading events...</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan="8" className="p-8 text-center text-gray-500">
+                <tr><td colSpan="9" className="p-8 text-center text-gray-500">
                   {timePreset === 'live' ? "Waiting for new real-time events..." : "No logs found."}
                 </td></tr>
               ) : logs.map((log) => (
@@ -284,6 +285,16 @@ const EventsLog = () => {
                           ? 'Clean'
                           : log.attack_type}
                     </span>
+                  </td>
+
+                  <td className="px-6 py-3">
+                    {log.raw_log?.ai?.flagged ? (
+                      <span className="px-2 py-1 text-[10px] font-bold rounded border bg-purple-100 text-purple-700 border-purple-200">
+                        ANOMALY{typeof log.raw_log?.ai?.score === "number" ? ` (${log.raw_log.ai.score.toFixed(3)})` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
 
                   <td className="px-6 py-3">

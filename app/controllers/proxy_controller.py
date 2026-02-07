@@ -10,6 +10,7 @@ from app.waf.decisions import Action
 from app.proxy.normalization import NormalizedRequest, safe_unquote, normalize_path, normalize_body_text
 from app.waf.ai_features import extract_features
 from app.waf.ai_dataset import append_request_row as append_baseline
+from app.ai_models.retrain_manager import increment_baseline_counter, trigger_retrain_async
 
 router = APIRouter()
 waf = WAFEngine()
@@ -155,7 +156,7 @@ async def handle_all(request: Request, path: str):
     if anomaly_ai and hasattr(anomaly_ai, "is_ready") and anomaly_ai.is_ready() and features is not None:
         try:
             anomaly_score = anomaly_ai.score(features)
-            AI_LOG_THRESHOLD = 0.90
+            AI_LOG_THRESHOLD = 0.90 # this is hardcoded now, change it to be dynamic once testing is done
             anomaly_flagged = anomaly_score >= AI_LOG_THRESHOLD
 
             if anomaly_flagged:
@@ -171,8 +172,14 @@ async def handle_all(request: Request, path: str):
         try:
             append_baseline(features)
             anomaly_baseline_written = True
-        except Exception:
+
+            # ✅ file-based counter + retrain trigger
+            increment_baseline_counter(1)
+            trigger_retrain_async(request.app)
+
+        except Exception as e:
             anomaly_baseline_written = False
+            print("[AI] baseline block failed:", repr(e), flush=True)
 
     # ===== BLOCK =====
     if effective_action == Action.BLOCK:
