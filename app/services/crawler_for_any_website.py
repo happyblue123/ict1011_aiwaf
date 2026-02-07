@@ -5,17 +5,35 @@ import time
 import re
 
 class AuthenticatedCrawler:
-    def __init__(self, origin_url, auth_info=None):
+    def __init__(self, origin_url, auth_info=None, excluded_endpoints=None):
         self.url = self.to_waf_url(origin_url, 8080) # 8080 is waf port
         parsed = urlparse(self.url.strip())
         self.scope = parsed.netloc
         self.auth = auth_info
+        # Normalize excluded endpoints (e.g. "/logout", "/admin")
+        self.excluded = set()
+        if excluded_endpoints:
+            if isinstance(excluded_endpoints, str):
+                self.excluded.add(excluded_endpoints.strip())
+            else:
+                for ep in excluded_endpoints:
+                    self.excluded.add(str(ep).strip())
         
         # create a session
         self.session = requests.Session()
         self.visited = set()
         self.queue = [] 
     
+    def is_excluded(self, url: str) -> bool:
+        path = urlparse(url).path.rstrip("/")
+        for ep in self.excluded:
+            if not ep:
+                continue
+            ep_norm = ep.rstrip("/")
+            if path == ep_norm or path.startswith(ep_norm + "/"):
+                return True
+        return False
+
     def to_waf_url(self, original_url: str, waf_port: int = 8080) -> str:
         parsed = urlparse(original_url)
 
@@ -175,14 +193,20 @@ class AuthenticatedCrawler:
             return False
 
         start_node = self.url
-        self.queue.append(start_node)
+        if not self.is_excluded(start_node):
+            self.queue.append(start_node)
 
         print("[*] Starting Authenticated Crawl...")
-
         while self.queue:
             url = self.queue.pop(0)
+
             if url in self.visited:
                 continue
+
+            if self.is_excluded(url):
+                print(f"   [skip] excluded endpoint: {url}")
+                continue
+
             try:
                 print(f"   Crawling: {url}")
                 r = self.session.get(url)
@@ -190,10 +214,17 @@ class AuthenticatedCrawler:
 
                 discovered = self.extract_urls(url, r.text)
                 for full_url in discovered:
-                    if self.in_scope(full_url) and full_url not in self.visited:
+                    if not self.in_scope(full_url):
+                        continue
+
+                    if self.is_excluded(full_url):
+                        continue
+
+                    if full_url not in self.visited:
                         self.queue.append(full_url)
 
                 time.sleep(0.2)
+
             except Exception as e:
                 print(f"   Error crawling {url}: {e}")
 

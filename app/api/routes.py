@@ -56,6 +56,14 @@ class SetupWAFRequest(BaseModel):
     password: str
     login_payload: Optional[Dict[str, Any]] = None
 
+class GenerateBaselineRequest(BaseModel):
+    target_host: str
+
+    login_endpoint: Optional[str] = None
+    excluded_endpoints: Optional[List[str]] = None 
+
+    login_payload: Optional[Dict[str, str]] = None
+
 class SetupDBRequest(BaseModel):
     host: str
     port: int = 3306
@@ -126,15 +134,13 @@ def setupdb(payload: SetupDBRequest):
         logger.exception("DB init error")
         raise HTTPException(status_code=400, detail=str(e))
 
-
-@router.post("/setupwaf")
-def setupwaf(payload: SetupWAFRequest, request: Request):
-
-    # 1) Build origin_url from target_host
+@router.post("/generate_baseline")
+def generate_baseline(payload: GenerateBaselineRequest, request: Request):
     raw = (payload.target_host or "").strip()
     if not raw:
         raise HTTPException(status_code=400, detail="target_host is required")
 
+    # Build origin_url (same logic you already use)
     if raw.startswith(("http://", "https://")):
         p = urlparse(raw)
         if not p.hostname:
@@ -154,7 +160,6 @@ def setupwaf(payload: SetupWAFRequest, request: Request):
 
     origin_url = f"{scheme}://{host}:{port}"
 
-    # 2) Build auth_info (optional)
     auth_info = None
     if payload.login_endpoint and payload.login_payload:
         auth_info = {
@@ -162,25 +167,55 @@ def setupwaf(payload: SetupWAFRequest, request: Request):
             "login_payload": payload.login_payload,
         }
 
-    # 3) Crawl to validate credentials
-    crawler = AuthenticatedCrawler(origin_url=origin_url, auth_info=auth_info)
+    crawler = AuthenticatedCrawler(
+        origin_url=origin_url,
+        auth_info=auth_info,
+        excluded_endpoints=payload.excluded_endpoints,  # ✅ LIST
+    )
+
     ok = crawler.crawl()
     if auth_info is not None and not ok:
-        raise HTTPException(
-            status_code=401,
-            detail="Deployment failed: crawler credentials are incorrect."
-        )
-    # 4) Write WAF config to DB
-    setup_waf_controller(payload)
-    # ✅ refresh runtime config after DB write
-    request.app.state.waf_config = get_active_waf_config()
-    # 5) Train AI model + reload into app
+        raise HTTPException(status_code=401, detail="Baseline generation failed: invalid crawler credentials")
+
     train_hybrid_main()
     anomaly_ai = getattr(request.app.state, "anomaly_ai_scorer", None)
     if anomaly_ai and hasattr(anomaly_ai, "load"):
         anomaly_ai.load()
 
     return {"status": "ok", "baseline_count": len(crawler.visited)}
+
+@router.post("/setupwaf")
+def setupwaf(payload: SetupWAFRequest, request: Request):
+    """
+    Creates / updates WAF instance only.
+    No crawling, no AI training here.
+    """
+
+    raw = (payload.target_host or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="target_host is required")
+
+    # Validate target_host format early
+    if raw.startswith(("http://", "https://")):
+        p = urlparse(raw)
+        if not p.hostname:
+            raise HTTPException(status_code=400, detail="Invalid target_host URL")
+    else:
+        if ":" in raw:
+            host_part, port_str = raw.rsplit(":", 1)
+            if not port_str.isdigit():
+                raise HTTPException(status_code=400, detail="Invalid port in target_host")
+
+    # 1) Persist WAF configuration
+    setup_waf_controller(payload)
+
+    # 2) Refresh runtime WAF config
+    request.app.state.waf_config = get_active_waf_config()
+
+    return {
+        "status": "ok",
+        "message": "WAF instance created successfully"
+    }
     
 @router.get("/logs")
 def get_logs(
