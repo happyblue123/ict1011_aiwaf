@@ -25,6 +25,7 @@ class OverviewController:
         recent = LogsModel.fetch_latest_event_rows(
             limit=recent_limit
         )
+        print(recent)
 
         return {
             "range": range,

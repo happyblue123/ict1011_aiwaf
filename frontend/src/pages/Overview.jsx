@@ -1,226 +1,451 @@
-// src/pages/Overview.jsx
-import React from 'react';
-import { 
-  Globe, 
-  ShieldAlert, 
-  BrainCircuit, 
-  Activity, 
-  CheckCircle2, 
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Globe,
+  ShieldAlert,
+  BrainCircuit,
+  Activity,
+  CheckCircle2,
+  Target,
   AlertTriangle,
-  Target
-} from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
+  RefreshCw,
+} from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
   Cell,
   Legend,
-  CartesianGrid
-} from 'recharts';
+  CartesianGrid,
+} from "recharts";
 
-// --- MOCK DATA BASED ON YOUR AI FEATURES ---
-const hybridTimelineData = Array.from({ length: 10 }, (_, i) => ({
-  date: `14:0${i}`,
-  signature: Math.floor(Math.random() * 500) + 200,
-  aiAnomaly: Math.floor(Math.random() * 300) + 50,
-}));
+export default function Overview() {
+  const [logs, setLogs] = useState([]);
+  // NEW: Add state for IP Policy Counts
+  const [ipCounts, setIpCounts] = useState({ whitelist: 0, blacklist: 0 });
+  const [loading, setLoading] = useState(true);
 
-const featureContributionData = [
-  { name: 'Query Suspicious Chars', value: 85 }, // From query_suspicious_char_count
-  { name: 'Path Hex Encoding', value: 65 },     // From path_hex_pct_count
-  { name: 'Body Length Anomaly', value: 45 },    // From body_len
-  { name: 'Path Entropy', value: 30 },
-  { name: 'Header Count', value: 20 },           // From header_count
-].sort((a, b) => b.value - a.value);
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/get-overview");
+      const data = await response.json();
 
-const attackLevelData = [
-  { name: 'Signature Block', value: 65, color: '#3B82F6' }, // Blue
-  { name: 'AI Anomaly Block', value: 35, color: '#8B5CF6' }, // Purple
-];
+      // ... existing log parsing logic ...
+      const parsedLogs = (data.recent_events || [])
+        .map((event) => event.raw_log)
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.ts) - new Date(b.ts));
 
-// --- SUB-COMPONENTS ---
-const StatCard = ({ title, value, subtext, icon: Icon, color, bg }) => (
-  <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between h-36 relative overflow-hidden group hover:shadow-md transition-all">
-    <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity ${bg}`}>
-      <Icon size={70} />
-    </div>
-    <div>
-      <p className="text-gray-500 text-sm font-medium">{title}</p>
-      <h3 className="text-2xl font-bold mt-1 text-gray-800">{value}</h3>
-    </div>
-    <p className={`text-xs font-semibold ${color}`}>{subtext}</p>
-  </div>
-);
+      setLogs(parsedLogs);
 
-const ModelHealth = () => (
-  <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-    <div className="flex items-center justify-between mb-4">
-      <h3 className="font-bold text-gray-800 flex items-center gap-2">
-        <BrainCircuit size={18} className="text-purple-500" /> Model Health
-      </h3>
-      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full animate-pulse">
-        LIVE
-      </span>
-    </div>
-    <div className="space-y-3">
-      <div className="flex justify-between items-center text-sm">
-        <span className="text-gray-500">Active Model</span>
-        <span className="font-mono text-gray-700">xgboost_v1.0.2.joblib</span>
+      // NEW: Set IP Policy Counts from API
+      setIpCounts(data.ip_policy_counts || { whitelist: 0, blacklist: 0 });
+    } catch (error) {
+      console.error("Failed to load logs:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, []);
+
+  // 2. Compute Metrics (Memoized for performance)
+  const stats = useMemo(() => {
+    const total = logs.length;
+    const blocked = logs.filter((l) => l.decision?.action === "block").length;
+    const aiFlagged = logs.filter((l) => l.ai?.flagged).length;
+    const monitor = logs.filter((l) => l.mode === "monitor").length;
+
+    // Calculate Block Rate
+    const blockRate = total > 0 ? ((blocked / total) * 100).toFixed(1) : 0;
+
+    return { total, blocked, aiFlagged, monitor, blockRate };
+  }, [logs]);
+
+  // 3. Prepare Chart Data
+  const timelineData = useMemo(() => {
+    // Group by Minute (HH:MM)
+    const grouped = {};
+    logs.forEach((log) => {
+      const time = new Date(log.ts).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      if (!grouped[time]) grouped[time] = { time, signature: 0, aiAnomaly: 0 };
+
+      // Categorize: If blocked by AI reason vs Standard reason
+      // (Simplified logic: if AI flagged it, count as AI, otherwise Signature)
+      if (log.ai?.flagged) {
+        grouped[time].aiAnomaly += 1;
+      } else if (log.decision?.action === "block") {
+        grouped[time].signature += 1;
+      }
+    });
+    // Return last 10 minutes or all data
+    return Object.values(grouped).slice(-15);
+  }, [logs]);
+
+  const attackDistData = useMemo(() => {
+    const counts = {};
+    logs.forEach((log) => {
+      if (log.decision?.action === "block") {
+        // Extract primary reason (e.g. "sqli" from "sqli:boolean_based")
+        const type = log.decision?.reasons?.[0]?.split(":")[0] || "Unknown";
+        counts[type] = (counts[type] || 0) + 1;
+      }
+    });
+
+    return Object.entries(counts).map(([name, value]) => ({
+      name: name.toUpperCase(),
+      value,
+    }));
+  }, [logs]);
+
+  const COLORS = ["#F59E0B", "#EF4444", "#8B5CF6", "#10B981", "#3B82F6"];
+
+  const ipPolicyData = useMemo(
+    () => [
+      { name: "Whitelist", value: ipCounts.whitelist },
+      { name: "Blacklist", value: ipCounts.blacklist },
+    ],
+    [ipCounts],
+  );
+
+  const IP_COLORS = ["#10B981", "#EF4444"]; // Emerald for Allow, Red for Block
+
+  if (loading) {
+    return (
+      <div className="h-96 flex flex-col items-center justify-center text-gray-500">
+        <RefreshCw className="animate-spin mb-2" size={32} />
+        <p>Loading Dashboard Analytics...</p>
       </div>
-      <div className="flex justify-between items-center text-sm">
-        <span className="text-gray-500">Last Retrained</span>
-        <span className="text-gray-700">2 hours ago</span>
-      </div>
-      <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
-        <div className="bg-green-500 h-2 rounded-full w-[98%]"></div>
-      </div>
-      <p className="text-[10px] text-gray-400 text-center italic">Accuracy: 98.4% | Threshold: 0.85</p>
-    </div>
-  </div>
-);
+    );
+  }
 
-const Overview = () => {
   return (
-    <div className="space-y-6">
-      {/* 1. Metric Row - AI vs Signature */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          title="Total Requests" 
-          value="1.2M" 
-          subtext="+12% from last hour" 
-          icon={Activity} 
-          color="text-blue-600" 
-          bg="text-blue-500" 
-        />
-        <StatCard 
-          title="Signature Blocks" 
-          value="42,851" 
-          subtext="Known Attack Patterns" 
-          icon={ShieldAlert} 
-          color="text-red-600" 
-          bg="text-red-500" 
-        />
-        <StatCard 
-          title="AI Anomaly Blocks" 
-          value="12,104" 
-          subtext="Zero-Day Detections" 
-          icon={BrainCircuit} 
-          color="text-purple-600" 
-          bg="text-purple-500" 
-        />
-        <StatCard 
-          title="Protection Score" 
-          value="99.2%" 
-          subtext="System Fully Optimized" 
-          icon={CheckCircle2} 
-          color="text-green-600" 
-          bg="text-green-500" 
-        />
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* 1. Header & Actions */}
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 tracking-tight">
+            Security Overview
+          </h2>
+          <p className="text-sm text-gray-500">
+            Real-time analysis from Neuro-WAF Engine
+          </p>
+        </div>
+        <button
+          onClick={fetchLogs}
+          className="flex items-center gap-2 text-sm bg-white border border-gray-200 px-3 py-1.5 rounded-lg text-gray-600 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
+        >
+          <RefreshCw size={14} /> Refresh Data
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 2. Main Chart: Hybrid Defense Timeline */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-gray-800">Hybrid Defense Timeline</h3>
-            <div className="flex gap-4 text-xs">
-              <span className="flex items-center gap-1 text-blue-500">● Signature</span>
-              <span className="flex items-center gap-1 text-purple-500">● AI Anomaly</span>
+      {/* 2. KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Total Traffic */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between relative overflow-hidden">
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+              Total Requests
+            </div>
+            <div className="text-3xl font-extrabold text-gray-800">
+              {stats.total.toLocaleString()}
+            </div>
+            <div className="flex items-center gap-1 text-green-600 text-xs font-medium mt-2 bg-green-50 px-2 py-0.5 rounded-full w-fit">
+              <Activity size={12} /> Live
             </div>
           </div>
-          <div className="h-80">
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
+            <Globe size={40} />
+          </div>
+        </div>
+
+        {/* Card 2: Threats Blocked */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+              Threats Blocked
+            </div>
+            <div className="text-3xl font-extrabold text-gray-800">
+              {stats.blocked.toLocaleString()}
+            </div>
+            <div className="text-xs text-red-500 mt-2 font-medium">
+              {stats.blockRate}% of total traffic
+            </div>
+          </div>
+          <div className="p-3 bg-red-50 text-red-600 rounded-lg">
+            <ShieldAlert size={40} />
+          </div>
+        </div>
+
+        {/* Card 3: AI Detections */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+              AI Anomalies
+            </div>
+            <div className="text-3xl font-extrabold text-gray-800">
+              {stats.aiFlagged.toLocaleString()}
+            </div>
+            <div className="text-xs text-purple-600 mt-2 font-medium">
+              Neuro-Engine Active
+            </div>
+          </div>
+          <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
+            <BrainCircuit size={40} />
+          </div>
+        </div>
+
+        {/* Card 4: System Health */}
+        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+              System Status
+            </div>
+            <div className="text-xl font-bold text-emerald-600 flex items-center gap-2 mt-1">
+              <CheckCircle2 size={20} /> Operational
+            </div>
+            <div className="text-xs text-gray-400 mt-2">
+              Mode: {stats.monitor > 0 ? "Hybrid" : "Protect"}
+            </div>
+          </div>
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
+            <Activity size={40} />
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Main Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Hybrid Timeline (2/3 width) */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <Activity size={18} className="text-indigo-500" /> Traffic &
+              Threat Volume
+            </h3>
+            <div className="flex gap-4 text-xs font-medium">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-blue-500"></span>{" "}
+                Signature Block
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-purple-500"></span>{" "}
+                AI Anomaly
+              </span>
+            </div>
+          </div>
+
+          <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={hybridTimelineData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+              <BarChart data={timelineData} barSize={12}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f3f4f6"
                 />
-                <Bar dataKey="signature" stackId="a" fill="#3B82F6" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="aiAnomaly" stackId="a" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 11, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  cursor={{ fill: "#f3f4f6", opacity: 0.5 }}
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "none",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                  }}
+                />
+                <Bar
+                  dataKey="signature"
+                  stackId="a"
+                  fill="#3B82F6"
+                  radius={[0, 0, 2, 2]}
+                />
+                <Bar
+                  dataKey="aiAnomaly"
+                  stackId="a"
+                  fill="#8B5CF6"
+                  radius={[2, 2, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* 3. Feature Explainability (XAI) Heatmap */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-            <AlertTriangle size={18} className="text-amber-500" /> Explainability: Top Triggers
+        {/* Right: Attack Distribution (1/3 width) */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
+          <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+            <Target size={18} className="text-red-500" /> Threat Vectors
           </h3>
-          <div className="space-y-6">
-            {featureContributionData.map((feature) => (
-              <div key={feature.name}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600 font-medium">{feature.name}</span>
-                  <span className="text-gray-400">{feature.value}% impact</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div 
-                    className="bg-amber-400 h-2 rounded-full transition-all duration-500" 
-                    style={{ width: `${feature.value}%` }}
-                  ></div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-8 text-[11px] text-gray-400 leading-tight">
-            These features represent the highest contributors to the current anomaly probability score across all intercepted requests.
+          <p className="text-xs text-gray-500 mb-6">
+            Distribution by attack category.
           </p>
+
+          <div className="flex-1 w-full min-h-[250px] relative">
+            {attackDistData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={attackDistData}
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {attackDistData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={COLORS[index % COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: "11px" }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                <CheckCircle2 size={32} className="text-green-200 mb-2" />
+                <span className="text-sm">No threats detected yet</span>
+              </div>
+            )}
+
+            {/* Center Text for Donut */}
+            {attackDistData.length > 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
+                <span className="text-3xl font-bold text-gray-800">
+                  {stats.blocked}
+                </span>
+                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">
+                  Blocked
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* 4. Attack Distribution */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-gray-800 font-bold mb-4">Block Distribution</h3>
-          <div className="h-48 relative">
+      {/* 4. High Risk Endpoints (Dynamic List) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: High Risk Endpoints (Takes 2/3 width) */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
+          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <AlertTriangle size={18} className="text-orange-500" /> High-Risk
+            Endpoints
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.entries(
+              logs
+                .filter((l) => l.decision?.action === "block")
+                .reduce((acc, l) => {
+                  const path =
+                    l.raw_target_wire || l.normalized_path || "Unknown";
+                  acc[path] = (acc[path] || 0) + 1;
+                  return acc;
+                }, {}),
+            )
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 4)
+              .map(([path, count], idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="font-mono text-xs text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded border border-orange-200 shrink-0">
+                      #{idx + 1}
+                    </div>
+                    <div
+                      className="text-sm font-medium text-gray-700 truncate"
+                      title={path}
+                    >
+                      {path}
+                    </div>
+                  </div>
+                  <div className="text-xs font-bold text-gray-900 bg-white px-2 py-1 rounded shadow-sm border border-gray-100">
+                    {count} Attacks
+                  </div>
+                </div>
+              ))}
+            {stats.blocked === 0 && (
+              <div className="col-span-2 text-center py-4 text-gray-400 text-sm italic">
+                System clean. No high-risk endpoints identified.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: IP Policy Donut Chart (Takes 1/3 width) */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
+          <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+            <ShieldAlert size={18} className="text-gray-600" /> IP Enforcement
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Active firewall rules distribution.
+          </p>
+
+          <div className="flex-1 w-full min-h-[200px] relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={attackLevelData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
-                  {attackLevelData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                <Pie
+                  data={ipPolicyData}
+                  innerRadius={55}
+                  outerRadius={75}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {ipPolicyData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={IP_COLORS[index]} />
                   ))}
                 </Pie>
+                <Tooltip />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: "11px" }}
+                />
               </PieChart>
             </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-bold text-gray-800">54K</span>
-              <span className="text-[10px] text-gray-400 uppercase font-bold">Total Blocks</span>
+
+            {/* Center Text for Donut */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
+              <span className="text-2xl font-bold text-gray-800">
+                {ipCounts.whitelist + ipCounts.blacklist}
+              </span>
+              <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">
+                Rules
+              </span>
             </div>
           </div>
-          <div className="flex justify-center gap-6 mt-2 text-xs">
-            <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Signature</div>
-            <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500"></span> AI Anomaly</div>
-          </div>
         </div>
-
-        {/* 5. Target Highlights */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-          <h3 className="text-gray-800 font-bold mb-4 flex items-center gap-2">
-            <Target size={18} className="text-red-500" /> High-Risk Endpoints
-          </h3>
-          <div className="space-y-4">
-            {['/api/v1/login', '/wp-admin/php', '/api/users/profile'].map((path) => (
-              <div key={path} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0">
-                <code className="text-xs text-blue-600 font-medium">{path}</code>
-                <span className="text-xs font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">High Anomaly</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 6. Model Health Widget */}
-        <ModelHealth />
       </div>
     </div>
   );
-};
-
-export default Overview;
+}

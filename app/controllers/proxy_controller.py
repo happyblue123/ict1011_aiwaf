@@ -156,7 +156,7 @@ async def handle_all(request: Request, path: str):
     if anomaly_ai and hasattr(anomaly_ai, "is_ready") and anomaly_ai.is_ready() and features is not None:
         try:
             anomaly_score = anomaly_ai.score(features)
-            AI_LOG_THRESHOLD = 0.90 # this is hardcoded now, change it to be dynamic once testing is done
+            AI_LOG_THRESHOLD = 0.50 # this is hardcoded now, change it to be dynamic once testing is done
             anomaly_flagged = anomaly_score >= AI_LOG_THRESHOLD
 
             if anomaly_flagged:
