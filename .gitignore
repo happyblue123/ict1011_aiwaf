@@ -4,7 +4,7 @@
 /app/__pycache__
 __pycache__/
 *.pyc
-*access.jsonl
+/logs/access.jsonl
 *ai_requests.jsonl
 *ai_model.joblib
 *ae_model.keras

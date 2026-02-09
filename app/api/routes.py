@@ -285,8 +285,6 @@ def overview(
     if isinstance(data, dict):
         data["ai_training_stats"] = ai_stats
 
-    print(data)
-
     return data
 
 @router.get("/traffic/analysis")

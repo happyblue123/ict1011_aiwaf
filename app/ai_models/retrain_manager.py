@@ -105,7 +105,7 @@ def trigger_retrain_async(app) -> None:
     lt = int(state.get("last_trained_count") or 0)
     diff = bc - lt
 
-    print(f"[AI] trigger called bc={bc} lt={lt} diff={diff} thr={THRESHOLD}", flush=True)
+    # print(f"[AI] trigger called bc={bc} lt={lt} diff={diff} thr={THRESHOLD}", flush=True)
 
     if diff < THRESHOLD:
         return

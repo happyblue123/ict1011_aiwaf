@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # Database (used before DB bootstrap + during runtime)
     DB_HOST: str = "127.0.0.1"
     DB_USER: str = "root"
-    DB_PASSWORD: str = ""  # overridden by .env
+    DB_PASSWORD: str = "password"  # overridden by .env
     DB_NAME: str = "neurowaf_db"
     DB_PORT: int = 3306
 
