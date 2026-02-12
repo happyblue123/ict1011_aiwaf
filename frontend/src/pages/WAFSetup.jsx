@@ -380,8 +380,10 @@ const WAFSetup = ({ onComplete }) => {
                   placeholder="NeuroWAF_db"
                   className="w-full p-3 rounded-lg border border-gray-200 outline-none"
                   value={formData.dbName}
-                  readOnly
+                  onChange={(e) => setFormData({ ...formData, dbName: e.target.value })}
                 />
+
+
 
                 <p className="text-xs text-gray-500">
                   Click “Setup Database” to test credentials and initialize schema.
