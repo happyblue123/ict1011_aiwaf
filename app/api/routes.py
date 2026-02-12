@@ -16,7 +16,10 @@ from app.controllers.auth_controller import (
     login_controller,
     auth_check_controller,
     logout_controller,
+    COOKIE_NAME,
+    _validate_db_session,
 )
+from app.controllers.settings_controller import SettingsController
 from app.controllers.waf_controller import (
     setup_waf_controller
 )
@@ -44,6 +47,17 @@ from app.db.db_bootstrap import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 AI_STATE_FILE = Path("app/ai_models/retrain_state.json")
+
+
+def _require_user(request: Request) -> dict:
+    """Return authenticated user dict or raise 401."""
+    raw_token = request.cookies.get(COOKIE_NAME)
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = _validate_db_session(raw_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    return user
 
 class LoginRequest(BaseModel):
     username: str
@@ -311,3 +325,22 @@ def ddos_settings():
 @router.put("/ddos/settings")
 def update_ddos_settings(payload: DdosSettingsUpdate):
     return DdosController.update_settings(payload.model_dump())
+
+
+# ── Settings (System Configuration page) ──────────────────
+class SettingsUpdate(BaseModel):
+    profile: Optional[Dict[str, Any]] = None
+    waf: Optional[Dict[str, Any]] = None
+    toggles: Optional[Dict[str, Any]] = None
+
+
+@router.get("/settings")
+def get_settings(request: Request):
+    user = _require_user(request)
+    return SettingsController.get_settings(user["user_id"])
+
+
+@router.put("/settings")
+def update_settings(payload: SettingsUpdate, request: Request):
+    user = _require_user(request)
+    return SettingsController.update_settings(user["user_id"], payload.model_dump(exclude_none=True))

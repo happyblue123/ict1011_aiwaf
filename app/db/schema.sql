@@ -93,7 +93,24 @@ VALUES (1, TRUE, 'Adaptive AI Rate-Limiting', NULL)
 ON DUPLICATE KEY UPDATE id = id;
 
 -- ==========================================
--- 7. SESSIONS TABLE (CHILD of users)
+-- 7. WAF SETTINGS TABLE (global toggles)
+-- Single-row table (id=1) like ddos_settings.
+-- ==========================================
+CREATE TABLE IF NOT EXISTS waf_settings (
+    id INT PRIMARY KEY,
+    email_alerts BOOLEAN DEFAULT TRUE,
+    sms_alerts BOOLEAN DEFAULT FALSE,
+    geo_blocking BOOLEAN DEFAULT TRUE,
+    rate_limiting BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+INSERT INTO waf_settings (id, email_alerts, sms_alerts, geo_blocking, rate_limiting)
+VALUES (1, TRUE, FALSE, TRUE, TRUE)
+ON DUPLICATE KEY UPDATE id = id;
+
+-- ==========================================
+-- 8. SESSIONS TABLE (CHILD of users)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS sessions (
     session_id CHAR(64) PRIMARY KEY,          -- store hash of token (sha256 hex)
