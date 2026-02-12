@@ -48,8 +48,6 @@ class SettingsController:
                     "is_active": bool(waf["is_active"]) if waf else False,
                 },
                 "toggles": {
-                    "email_alerts": bool(toggles["email_alerts"]) if toggles else True,
-                    "sms_alerts": bool(toggles["sms_alerts"]) if toggles else False,
                     "geo_blocking": bool(toggles["geo_blocking"]) if toggles else True,
                     "rate_limiting": bool(toggles["rate_limiting"]) if toggles else True,
                 },
@@ -96,17 +94,13 @@ class SettingsController:
                 if toggles:
                     cur.execute(
                         """
-                        INSERT INTO waf_settings (id, email_alerts, sms_alerts, geo_blocking, rate_limiting)
-                        VALUES (1, %s, %s, %s, %s)
+                        INSERT INTO waf_settings (id, geo_blocking, rate_limiting)
+                        VALUES (1, %s, %s)
                         ON DUPLICATE KEY UPDATE
-                            email_alerts  = VALUES(email_alerts),
-                            sms_alerts    = VALUES(sms_alerts),
                             geo_blocking  = VALUES(geo_blocking),
                             rate_limiting = VALUES(rate_limiting)
                         """,
                         (
-                            bool(toggles.get("email_alerts", True)),
-                            bool(toggles.get("sms_alerts", False)),
                             bool(toggles.get("geo_blocking", True)),
                             bool(toggles.get("rate_limiting", True)),
                         ),

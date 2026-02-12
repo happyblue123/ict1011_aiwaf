@@ -98,15 +98,13 @@ ON DUPLICATE KEY UPDATE id = id;
 -- ==========================================
 CREATE TABLE IF NOT EXISTS waf_settings (
     id INT PRIMARY KEY,
-    email_alerts BOOLEAN DEFAULT TRUE,
-    sms_alerts BOOLEAN DEFAULT FALSE,
     geo_blocking BOOLEAN DEFAULT TRUE,
     rate_limiting BOOLEAN DEFAULT TRUE,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
-INSERT INTO waf_settings (id, email_alerts, sms_alerts, geo_blocking, rate_limiting)
-VALUES (1, TRUE, FALSE, TRUE, TRUE)
+INSERT INTO waf_settings (id, geo_blocking, rate_limiting)
+VALUES (1, TRUE, TRUE)
 ON DUPLICATE KEY UPDATE id = id;
 
 -- ==========================================

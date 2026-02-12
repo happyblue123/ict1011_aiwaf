@@ -2,13 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   User,
-  Bell,
   Lock,
   Shield,
   Key,
   Globe,
-  Smartphone,
-  Mail,
   Save,
   Loader2,
   CheckCircle2
@@ -49,8 +46,6 @@ const SettingsPage = () => {
   const [wafMode, setWafMode] = useState('protect');
 
   // Toggles
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [smsAlerts, setSmsAlerts] = useState(false);
   const [geoBlocking, setGeoBlocking] = useState(true);
   const [rateLimiting, setRateLimiting] = useState(true);
 
@@ -78,8 +73,6 @@ const SettingsPage = () => {
         setWafMode(data.waf?.waf_mode || 'protect');
 
         // Toggles
-        setEmailAlerts(data.toggles?.email_alerts ?? true);
-        setSmsAlerts(data.toggles?.sms_alerts ?? false);
         setGeoBlocking(data.toggles?.geo_blocking ?? true);
         setRateLimiting(data.toggles?.rate_limiting ?? true);
       } catch (err) {
@@ -102,8 +95,6 @@ const SettingsPage = () => {
       profile: newPassword ? { new_password: newPassword } : undefined,
       waf: { waf_mode: wafMode },
       toggles: {
-        email_alerts: emailAlerts,
-        sms_alerts: smsAlerts,
         geo_blocking: geoBlocking,
         rate_limiting: rateLimiting,
       },
@@ -237,35 +228,6 @@ const SettingsPage = () => {
 
         {/* Middle & Right: Notifications + Security */}
         <div className="lg:col-span-2 space-y-6">
-
-          {/* Notifications */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <SectionHeader icon={Bell} title="Alert Notifications" description="Configure how you receive critical security alerts." />
-
-            <div className="space-y-4 divide-y divide-gray-100">
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Mail size={18} /></div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">Email Reports</p>
-                    <p className="text-xs text-gray-500">Receive daily summaries and high-priority alerts.</p>
-                  </div>
-                </div>
-                <Toggle enabled={emailAlerts} setEnabled={setEmailAlerts} />
-              </div>
-
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-50 text-purple-600 rounded-lg"><Smartphone size={18} /></div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">SMS / PagerDuty</p>
-                    <p className="text-xs text-gray-500">Immediate alerts for DDoS attacks exceeding 1Gbps.</p>
-                  </div>
-                </div>
-                <Toggle enabled={smsAlerts} setEnabled={setSmsAlerts} />
-              </div>
-            </div>
-          </div>
 
           {/* Security & Mitigation */}
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
