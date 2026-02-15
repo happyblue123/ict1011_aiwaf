@@ -24,6 +24,7 @@ joblib
 # --- Web Scraping & Utilities ---
 scrapy
 beautifulsoup4
+playwright
 
 # Frontend dependencies
 react

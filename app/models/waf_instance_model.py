@@ -35,19 +35,3 @@ class WAFInstanceModel:
             waf_id = cur.lastrowid
         return int(waf_id)
 
-
-    @staticmethod
-    def save_crawler_settings(conn, waf_id: int, login_endpoint: str, login_payload: dict, excluded_endpoints: str):
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO crawler_settings (waf_id, login_endpoint, login_payload, excluded_endpoints, last_crawled)
-                VALUES (%s, %s, %s, %s, NULL)
-                """,
-                (
-                    waf_id,
-                    login_endpoint,
-                    json.dumps(login_payload or {}, ensure_ascii=False),
-                    excluded_endpoints,
-                ),
-            )

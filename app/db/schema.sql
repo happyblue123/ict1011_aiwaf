@@ -37,20 +37,6 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB;
 
 -- ==========================================
--- 3. CRAWLER SETTINGS TABLE (CHILD of waf_instances)
--- ==========================================
-CREATE TABLE IF NOT EXISTS crawler_settings (
-    setting_id INT AUTO_INCREMENT PRIMARY KEY,
-    waf_id INT NOT NULL,
-    login_endpoint VARCHAR(255),
-    login_payload TEXT,
-    excluded_endpoints TEXT,
-    last_crawled DATETIME NULL,
-    CONSTRAINT fk_crawler_settings_waf
-      FOREIGN KEY (waf_id) REFERENCES waf_instances(waf_id) ON DELETE CASCADE
-) ENGINE=InnoDB;
-
--- ==========================================
 -- 4. EVENT LOGS TABLE
 -- ==========================================
 CREATE TABLE IF NOT EXISTS event_logs (

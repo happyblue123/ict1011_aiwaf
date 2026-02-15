@@ -61,12 +61,7 @@ const WAFSetup = ({ onComplete }) => {
     password: '',
 
     // ✅ Step 3: crawler config
-    loginEndpoint: '/login',
     excludedEndpoints: ['/logout'], // ✅ NOW MULTIPLE
-    loginPayloadPairs: [
-      { key: "username", value: "test" },
-      { key: "password", value: "test" },
-    ],
 
     // ✅ Step 1: DB setup
     dbHost: '127.0.0.1',
@@ -76,30 +71,6 @@ const WAFSetup = ({ onComplete }) => {
     dbName: 'NeuroWAF_db',
     schemaFile: 'schema.sql',
   });
-
-  // ===== Login payload pairs helpers =====
-  const addPayloadPair = () => {
-    setFormData((prev) => ({
-      ...prev,
-      loginPayloadPairs: [...prev.loginPayloadPairs, { key: "", value: "" }],
-    }));
-  };
-
-  const removePayloadPair = (idx) => {
-    setFormData((prev) => ({
-      ...prev,
-      loginPayloadPairs: prev.loginPayloadPairs.filter((_, i) => i !== idx),
-    }));
-  };
-
-  const updatePayloadPair = (idx, field, val) => {
-    setFormData((prev) => ({
-      ...prev,
-      loginPayloadPairs: prev.loginPayloadPairs.map((row, i) =>
-        i === idx ? { ...row, [field]: val } : row
-      ),
-    }));
-  };
 
   // ===== Excluded endpoints helpers (NEW) =====
   const addExcludedEndpoint = () => {
@@ -243,23 +214,12 @@ const WAFSetup = ({ onComplete }) => {
     setBaselineLoading(true);
 
     try {
-      const login_payload = {};
-      for (const row of formData.loginPayloadPairs) {
-        const k = (row.key || "").trim();
-        if (!k) continue;
-        login_payload[k] = row.value ?? "";
-      }
-
       const excluded_endpoints = normalizeExcludedEndpoints();
 
       const payload = {
         instance_id: wafInstanceId,
         target_host: formData.targetIp,
-
-        login_endpoint: (formData.loginEndpoint || "").trim(),
-        excluded_endpoints, // ✅ NOW A LIST
-
-        login_payload,
+        excluded_endpoints,
       };
 
       const res = await fetch(`${API_BASE_URL}/generate_baseline`, {
@@ -293,9 +253,7 @@ const WAFSetup = ({ onComplete }) => {
     !!formData.username &&
     !!formData.password;
 
-  const canProceedBaseline =
-    !!(formData.loginEndpoint || "").trim() &&
-    (formData.excludedEndpoints || []).some((x) => (x || "").trim());
+  const canProceedBaseline = (formData.excludedEndpoints || []).some((x) => (x || "").trim());
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -509,19 +467,6 @@ const WAFSetup = ({ onComplete }) => {
           {/* ✅ STEP 3: BASELINE CONFIG -> /generate_baseline */}
           {step === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-gray-700">Login Endpoint</label>
-                <input
-                  type="text"
-                  placeholder="/login"
-                  className="w-full p-3 rounded-lg border border-gray-200 outline-none"
-                  value={formData.loginEndpoint}
-                  onChange={(e) => setFormData({ ...formData, loginEndpoint: e.target.value })}
-                />
-                <p className="text-xs text-gray-500">
-                  Endpoint on the protected app used for login (e.g. /login).
-                </p>
-              </div>
 
               {/* ✅ MULTIPLE EXCLUDED ENDPOINTS */}
               <div className="space-y-3">
@@ -560,53 +505,6 @@ const WAFSetup = ({ onComplete }) => {
 
                 <p className="text-xs text-gray-500">
                   Pages you do NOT want the crawler to visit (e.g. /logout, /admin).
-                </p>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-gray-700">
-                    Login Payload (Key / Value Pairs)
-                  </p>
-                  <button
-                    type="button"
-                    onClick={addPayloadPair}
-                    className="px-3 py-2 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 font-semibold"
-                  >
-                    + Add Field
-                  </button>
-                </div>
-
-                {formData.loginPayloadPairs.map((row, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <input
-                      type="text"
-                      placeholder="key (e.g. username)"
-                      className="col-span-5 p-3 rounded-lg border border-gray-200 outline-none text-sm"
-                      value={row.key}
-                      onChange={(e) => updatePayloadPair(idx, "key", e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      placeholder="value (e.g. admin)"
-                      className="col-span-6 p-3 rounded-lg border border-gray-200 outline-none text-sm"
-                      value={row.value}
-                      onChange={(e) => updatePayloadPair(idx, "value", e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removePayloadPair(idx)}
-                      disabled={formData.loginPayloadPairs.length <= 1}
-                      className="col-span-1 h-10 w-10 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40"
-                      title="Remove"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-
-                <p className="text-xs text-gray-500">
-                  Example: username=admin, password=pass, any_other_field=value
                 </p>
               </div>
 

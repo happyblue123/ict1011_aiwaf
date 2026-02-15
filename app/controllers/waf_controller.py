@@ -54,15 +54,6 @@ def setup_waf_controller(payload) -> dict:
         # Create admin user (same conn)
         UserModel.create_user(waf_id, payload.username, payload.password, role="admin", conn=conn)
 
-        # Save crawler settings
-        WAFInstanceModel.save_crawler_settings(
-            conn,
-            waf_id=waf_id,
-            login_endpoint=payload.login_endpoint,
-            login_payload=payload.login_payload,
-            excluded_endpoints=payload.excluded_endpoints,
-        )
-
         conn.commit()
         return {"status": "ok", "waf_id": waf_id}
 

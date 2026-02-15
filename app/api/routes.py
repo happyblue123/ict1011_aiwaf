@@ -25,7 +25,7 @@ from app.controllers.waf_controller import (
 )
 from app.controllers.logs_controller import LogsController
 
-from app.services.crawler_for_any_website import AuthenticatedCrawler
+from app.services.user_driven_crawler import HybridCrawler
 
 from app.services.train_hybrid_ai import main as train_hybrid_main
 
@@ -74,11 +74,8 @@ class SetupWAFRequest(BaseModel):
 
 class GenerateBaselineRequest(BaseModel):
     target_host: str
-
-    login_endpoint: Optional[str] = None
     excluded_endpoints: Optional[List[str]] = None 
 
-    login_payload: Optional[Dict[str, str]] = None
 
 class SetupDBRequest(BaseModel):
     host: str
@@ -176,22 +173,15 @@ def generate_baseline(payload: GenerateBaselineRequest, request: Request):
 
     origin_url = f"{scheme}://{host}:{port}"
 
-    auth_info = None
-    if payload.login_endpoint and payload.login_payload:
-        auth_info = {
-            "login_endpoint": payload.login_endpoint,
-            "login_payload": payload.login_payload,
-        }
-
-    crawler = AuthenticatedCrawler(
+    crawler = HybridCrawler(
         origin_url=origin_url,
-        auth_info=auth_info,
-        excluded_endpoints=payload.excluded_endpoints,  # ✅ LIST
+        # auth_info=auth_info,
+        excluded_endpoints=payload.excluded_endpoints,
     )
 
-    ok = crawler.crawl()
-    if auth_info is not None and not ok:
-        raise HTTPException(status_code=401, detail="Baseline generation failed: invalid crawler credentials")
+    ok = crawler.start()
+    if not ok:
+        raise HTTPException(status_code=500, detail="Baseline generation failed")
 
     train_hybrid_main()
     anomaly_ai = getattr(request.app.state, "anomaly_ai_scorer", None)
