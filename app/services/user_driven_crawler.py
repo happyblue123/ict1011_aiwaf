@@ -32,40 +32,68 @@ class HybridCrawler:
         print(f"[*] Launching Firefox at {self.base_url}")
         
         with sync_playwright() as p:
-            # Launching Firefox as requested
             browser = p.firefox.launch(headless=False) 
             context = browser.new_context()
             page = context.new_page()
 
-            # Hook: Still useful for capturing URLs the user visits in real-time
+            # URL Capture Hook
             def handle_request(request):
                 url = request.url
                 if self.in_scope(url) and not self.is_excluded(url):
                     if url not in self.visited:
                         self.queue.append(url)
-
             page.on("request", handle_request)
-            page.goto(self.base_url)
 
+            # Injected Non-Interfering Instruction Box
+            context.add_init_script("""
+                window.addEventListener('DOMContentLoaded', () => {
+                    const div = document.createElement('div');
+                    div.style.cssText = `
+                        position: fixed; 
+                        top: 10px; 
+                        right: 10px; 
+                        z-index: 999999; 
+                        background: rgba(45, 52, 70, 0.85); 
+                        color: white; 
+                        padding: 12px; 
+                        border-radius: 8px; 
+                        border: 1px solid #0984e3; 
+                        font-family: sans-serif; 
+                        font-size: 13px;
+                        width: 220px;
+                        pointer-events: none; /* Allows clicking through the box */
+                        user-select: none;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                    `;
+                    div.innerHTML = `
+                        <b style="color: #74b9ff; display: block; margin-bottom: 5px;">User-directed crawling mode</b>
+                        1. Login to the application.<br>
+                        2. Click all links.<br>
+                        3. Submit all forms.<br>
+                        <hr style="border: 0; border-top: 1px solid #555; margin: 8px 0;">
+                        <span style="font-size: 11px; opacity: 0.8;">Close this tab when finished.</span>
+                    `;
+                    document.body.appendChild(div);
+                });
+            """)
+
+            page.goto(self.base_url)
             print("[*] Waiting for user to close the browser window...")
+
             try:
-                # This single line replaces all the flag/loop logic
                 page.wait_for_event("close", timeout=0) 
-            except Exception as e:
-                # If the browser is killed forcefully, it might trigger an exception here
-                print(f"[*] Manual interaction ended: {e}")
+            except Exception:
+                pass
 
             print("[*] Capturing session cookies...")
             cookies = context.cookies()
             for cookie in cookies:
-                print(cookie)
                 self.session.cookies.set(
                     cookie['name'], 
                     cookie['value'], 
                     domain=cookie['domain']
                 )
             
-            # Explicitly close to ensure no ghost processes remain
             browser.close()
 
     def extract_urls(self, base_url, html):

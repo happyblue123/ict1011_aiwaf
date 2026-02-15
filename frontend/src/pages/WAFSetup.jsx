@@ -467,7 +467,14 @@ const WAFSetup = ({ onComplete }) => {
           {/* ✅ STEP 3: BASELINE CONFIG -> /generate_baseline */}
           {step === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-
+              {/* Professional Header Section */}
+              <div className="border-b pb-4">
+                <h3 className="text-lg font-bold text-gray-900">Crawler Scope Configuration</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Define high-risk or sensitive endpoints (e.g., <code>/logout</code>, <code>/delete</code>) 
+                  to be excluded from the automated discovery and baseline generation process.
+                </p>
+              </div>
               {/* ✅ MULTIPLE EXCLUDED ENDPOINTS */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
