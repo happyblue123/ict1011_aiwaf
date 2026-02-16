@@ -1,7 +1,7 @@
 import time
 import uuid
 import httpx
-from urllib.parse import unquote_plus
+from urllib.parse import unquote_plus, parse_qs
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import PlainTextResponse
 
@@ -28,6 +28,38 @@ def _get_waf_mode(request: Request) -> str:
     if mode not in ("shadow", "protect"):
         mode = "protect"
     return mode
+
+def extract_body_keys(body_text: str, content_type: str) -> list:
+    """
+    Extract only parameter keys from request body.
+    No values are returned.
+    """
+    if not body_text:
+        return []
+
+    content_type = (content_type or "").lower()
+
+    try:
+        # JSON
+        if "application/json" in content_type:
+            data = json.loads(body_text)
+            if isinstance(data, dict):
+                return list(data.keys())
+            return []
+
+        # Form-urlencoded
+        if "application/x-www-form-urlencoded" in content_type:
+            parsed = parse_qs(body_text, keep_blank_values=True)
+            return list(parsed.keys())
+
+        # Basic XML tag extraction
+        if "xml" in content_type:
+            return list(set(re.findall(r"<([a-zA-Z0-9_:-]+)", body_text)))
+
+    except Exception:
+        return []
+
+    return []
 
 async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, decision, waf_mode: str):
     """
@@ -72,6 +104,9 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
                 decision.reasons.append(f"AI_ANOMALY:{score:.3f}")
         except Exception as e:
             print(f"[AI] Scoring failed: {e}")
+    else :
+        # train classifier ai
+        print("Add train classifier ai code")
 
     # 3. Baseline Collection (Only for clean, non-anomalous traffic)
     if decision.action == Action.ALLOW and not results["flagged"]:
@@ -93,6 +128,11 @@ def _log_waf_event(request: Request, req_norm: NormalizedRequest, decision, ai_r
     """
     latency_ms = int((time.perf_counter() - start_time) * 1000)
     
+    body_keys = extract_body_keys(
+        req_norm.body_text,
+        request.headers.get("content-type", "")
+    )
+
     log_data = {
         "request_id": request_id,
         "mode": waf_mode,
@@ -105,6 +145,7 @@ def _log_waf_event(request: Request, req_norm: NormalizedRequest, decision, ai_r
         "normalized_path": req_norm.normalized_path,
         "query": req_norm.query,
         "body_len": req_norm.body_len,
+        "body_keys": body_keys, 
         "decision": {
             "action": decision.action,
             "reasons": decision.reasons,
@@ -149,7 +190,7 @@ async def handle_all(request: Request, path: str):
             body_full = await request.body()
             request.state.cached_body = body_full
             body_len = len(body_full)
-            if request.headers.get("content-type", "").lower().startswith(("application/json", "text/")):
+            if request.headers.get("content-type", "").lower().startswith(("application/json", "application/x-www-form-urlencoded", "application/xml", "text/")):
                 body_text = normalize_body_text(body_full.decode("utf-8", errors="ignore"))
         except Exception:
             request.state.cached_body = b""
