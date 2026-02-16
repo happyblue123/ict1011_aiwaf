@@ -6,6 +6,11 @@ __pycache__/
 *.pyc
 access.jsonl
 ai_requests.jsonl
+ai_models/data/
+ae_model.keras
+ai_model.joblib
+request_classifier.pkl
+retrain_state.json
 
 #Environment Variables
 .env
@@ -16,8 +21,3 @@ ai_requests.jsonl
 node_modules/
 npm-debug.log
 
-ai_models/data/
-ae_model.keras
-ai_model.joblib
-request_classifier.pkl
-retrain_state.json
