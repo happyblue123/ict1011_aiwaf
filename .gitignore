@@ -4,10 +4,7 @@
 /app/__pycache__
 __pycache__/
 *.pyc
-/logs/access.jsonl
-*ai_requests.jsonl
-*ai_model.joblib
-*ae_model.keras
+access.jsonl
 
 #Environment Variables
 .env
