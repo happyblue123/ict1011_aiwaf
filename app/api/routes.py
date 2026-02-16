@@ -28,6 +28,7 @@ from app.controllers.logs_controller import LogsController
 from app.services.user_driven_crawler import HybridCrawler
 
 from app.services.train_hybrid_ai import main as train_hybrid_main
+from app.services.train_classification_ai import train_classification_model 
 
 from app.controllers.policy_controller import PolicyController
 
@@ -187,6 +188,11 @@ def generate_baseline(payload: GenerateBaselineRequest, request: Request):
     anomaly_ai = getattr(request.app.state, "anomaly_ai_scorer", None)
     if anomaly_ai and hasattr(anomaly_ai, "load"):
         anomaly_ai.load()
+
+    train_classification_model()
+    classification_ai = getattr(request.app.state, "classification_ai", None)
+    if classification_ai and hasattr(classification_ai, "load"):
+        classification_ai.load()
 
     return {"status": "ok", "baseline_count": len(crawler.visited)}
 

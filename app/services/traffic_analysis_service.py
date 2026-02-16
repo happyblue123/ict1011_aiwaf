@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Tuple
 
 from app.models.logs_model import LogsModel
-from app.services.geoip_service import GeoIPService
+# from app.services.geoip_service import GeoIPService
 
 
 def _parse_ts(ts: str) -> datetime | None:
@@ -62,7 +62,7 @@ class TrafficAnalysisService:
                 enforcement_actions += 1
 
             ai = e.get("ai") or {}
-            if ai.get("flagged") is True:
+            if ai.get("flagged") is True or ai.get("classification_blocked") is True:
                 ai_flagged += 1
 
             ts = _parse_ts(e.get("ts"))
@@ -87,7 +87,10 @@ class TrafficAnalysisService:
 
             threat_counts[str(attack_type)] = threat_counts.get(str(attack_type), 0) + 1
 
-            ip = e.get("client_ip")
+            client = e.get("client") or {}
+            ip = client.get("ip")
+            country = client.get("country")
+            flag = client.get("flag")
             if ip:
                 ip_counts[str(ip)] = ip_counts.get(str(ip), 0) + 1
 
@@ -107,18 +110,22 @@ class TrafficAnalysisService:
         top_threats = sorted(threat_counts.items(), key=lambda kv: kv[1], reverse=True)[:8]
         threat_radar = [{"subject": name, "value": count} for name, count in top_threats]
 
-        # Geo
-        geoip = GeoIPService()
-        geoip_enabled = geoip.is_enabled()
-
-        top_ips = sorted(ip_counts.items(), key=lambda kv: kv[1], reverse=True)[:200]
+        # Geo aggregation (use logged data, DO NOT call GeoIP again)
         country_counts: Dict[str, Dict[str, Any]] = {}
-        for ip, cnt in top_ips:
-            country_name, flag = geoip.lookup_country(ip)
-            key = country_name or "Unknown"
-            if key not in country_counts:
-                country_counts[key] = {"country": key, "flag": flag, "count": 0}
-            country_counts[key]["count"] += cnt
+
+        for e in events:
+            client = e.get("client") or {}
+            country = client.get("country") or "Unknown"
+            flag = client.get("flag") or "🏳️"
+
+            if country not in country_counts:
+                country_counts[country] = {
+                    "country": country,
+                    "flag": flag,
+                    "count": 0
+                }
+
+            country_counts[country]["count"] += 1
 
         geo = sorted(country_counts.values(), key=lambda x: x["count"], reverse=True)
 
@@ -135,5 +142,4 @@ class TrafficAnalysisService:
             "timeseries": timeseries,
             "threat_radar": threat_radar,
             "geo": geo,
-            "geoip_enabled": geoip_enabled,
         }

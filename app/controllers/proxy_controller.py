@@ -14,7 +14,8 @@ from app.ai_models.retrain_manager import increment_baseline_counter, trigger_re
 
 router = APIRouter()
 waf = WAFEngine()
-AI_LOG_THRESHOLD = 0.90
+AI_LOG_THRESHOLD = 0.65
+AI_CLASSIFICATION_THRESHOLD  = 0.90
 
 def _get_waf_mode(request: Request) -> str:
     """
@@ -67,11 +68,16 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
     Updates the decision object in-place if an anomaly is detected.
     """
     anomaly_ai = getattr(request.app.state, "anomaly_ai_scorer", None)
+    classification_ai = getattr(request.app.state, "classification_ai", None)
+
     results = {
-        "score": None,
+        "score": None,                 # anomaly score
         "flagged": False,
         "baseline_written": False,
-        "model_ready": False
+        "model_ready": False,
+
+        "classification_score": None,
+        "classification_blocked": False
     }
 
     # 1. Feature Extraction
@@ -104,9 +110,27 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
                 decision.reasons.append(f"AI_ANOMALY:{score:.3f}")
         except Exception as e:
             print(f"[AI] Scoring failed: {e}")
-    else :
-        # train classifier ai
-        print("Add train classifier ai code")
+
+    # 2B. Classification AI
+    if classification_ai and classification_ai.is_ready():
+        try:
+            # Build text input for classifier
+            request_text = f"{req_norm.method} {req_norm.raw_target_wire} {req_norm.body_text}"
+
+            cls_result = classification_ai.classify(request_text, threshold=AI_CLASSIFICATION_THRESHOLD)
+
+            results["classification_score"] = cls_result["malicious_score"]
+            results["classification_blocked"] = cls_result["is_blocked"]
+
+            if cls_result["is_blocked"]:
+                decision.action = Action.BLOCK
+                decision.reasons = list(decision.reasons or [])
+                decision.reasons.append(
+                    f"AI_CLASSIFICATION:{cls_result['malicious_score']:.3f}"
+                )
+
+        except Exception as e:
+            print(f"[AI] Classification failed: {e}")
 
     # 3. Baseline Collection (Only for clean, non-anomalous traffic)
     if decision.action == Action.ALLOW and not results["flagged"]:
@@ -126,6 +150,17 @@ def _log_waf_event(request: Request, req_norm: NormalizedRequest, decision, ai_r
     """
     Centralized logging for all WAF outcomes (Allow, Block, Rate Limit).
     """
+    country = "Unknown"
+    flag = "🏳️"
+    geoip_service = request.app.state.geoip_service
+    if geoip_service and geoip_service.is_enabled() and req_norm.client_ip:
+        try:
+            country, flag = geoip_service.lookup_country(req_norm.client_ip)
+        except Exception:
+            country, flag = "Unknown", "🏳️"
+
+    geoip_service = getattr(request.app.state, "geoip_service", None)
+
     latency_ms = int((time.perf_counter() - start_time) * 1000)
     
     body_keys = extract_body_keys(
@@ -136,7 +171,11 @@ def _log_waf_event(request: Request, req_norm: NormalizedRequest, decision, ai_r
     log_data = {
         "request_id": request_id,
         "mode": waf_mode,
-        "client_ip": req_norm.client_ip,
+        "client": {
+            "ip": req_norm.client_ip,
+            "country": country,
+            "flag": flag,
+        },
         "user_agent": req_norm.user_agent,
         "method": req_norm.method,
         "destination": {"target": protected_target},
@@ -164,7 +203,7 @@ def _log_waf_event(request: Request, req_norm: NormalizedRequest, decision, ai_r
 async def handle_all(request: Request, path: str):
     request_id = str(uuid.uuid4())
     start = time.perf_counter()
-    
+
     # 1. Configuration Check
     waf_mode = _get_waf_mode(request)
     if not waf_mode:

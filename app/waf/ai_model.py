@@ -5,7 +5,8 @@ import pandas as pd
 
 from tensorflow import keras
 
-MODEL_PATH = Path("app/ai_models/ai_model.joblib")
+ANOMALY_MODEL_PATH = Path("app/ai_models/ai_model.joblib")
+CLASSIFICATION_MODEL_PATH = Path("app/ai_models/request_classifier.pkl")
 
 class AIAnomalyScorer:
     def __init__(self):
@@ -16,8 +17,8 @@ class AIAnomalyScorer:
         return self.bundle is not None
 
     def load(self):
-        if MODEL_PATH.exists():
-            self.bundle = joblib.load(MODEL_PATH)
+        if ANOMALY_MODEL_PATH.exists():
+            self.bundle = joblib.load(ANOMALY_MODEL_PATH)
 
             # AE is optional (backwards compatible)
             ae_path = self.bundle.get("ae_path")
@@ -99,3 +100,48 @@ class AIAnomalyScorer:
         Return anomaly score in [0,1] (higher = more anomalous).
         """
         return self.score_detail(features)["combined"]
+
+class AIRequestClassifier:
+    def __init__(self):
+        self.model = None  # This will hold the sklearn Pipeline (TF-IDF + Classifier)
+
+    def is_ready(self) -> bool:
+        return self.model is not None
+
+    def load(self):
+        """Loads the saved classification pipeline from disk."""
+        if CLASSIFICATION_MODEL_PATH.exists():
+            try:
+                # Assuming the model was saved as a joblib/pickle pipeline
+                self.model = joblib.load(CLASSIFICATION_MODEL_PATH)
+            except Exception as e:
+                print(f"Error loading classification model: {e}")
+                self.model = None
+
+    def predict_score(self, request_text: str) -> float:
+        """
+        Returns a maliciousness score between 0 and 1.
+        Higher score = higher probability of being a threat.
+        """
+        if not self.is_ready():
+            return 0.0
+
+        # Most text classifiers expect a list-like input
+        # Get probability of the 'Malicious' class (usually index 1)
+        try:
+            probs = self.model.predict_proba([request_text])[0]
+            # Assumes 0: Benign, 1: Malicious
+            return float(probs[1])
+        except Exception:
+            return 0.0
+
+    def classify(self, request_text: str, threshold: float = 0.5) -> dict:
+        """
+        Returns a structured decision based on the maliciousness score.
+        """
+        score = self.predict_score(request_text)
+        return {
+            "malicious_score": score,
+            "is_blocked": score >= threshold,
+            "decision": "BLOCK" if score >= threshold else "ALLOW"
+        }

@@ -7,9 +7,10 @@ from app.api.routes import router  # dashboard API routes
 
 from app.services.proxy_service import ProxyService
 from app.services.logging_service import LoggingService
-from app.waf.ai_model import AIAnomalyScorer
+from app.waf.ai_model import AIAnomalyScorer, AIRequestClassifier
 
 from app.services.runtime_config import get_active_waf_config
+from app.services.geoip_service import GeoIPService
 
 
 app = FastAPI(title="AIWAF Proxy (V1)")
@@ -52,6 +53,14 @@ async def on_startup():
     anomaly_ai = AIAnomalyScorer()
     anomaly_ai.load()
     app.state.anomaly_ai_scorer = anomaly_ai
+
+    classification_ai = AIRequestClassifier()
+    classification_ai.load()
+    app.state.classification_ai = classification_ai
+
+    # GeoIP service
+    geoip_service = GeoIPService()
+    app.state.geoip_service = geoip_service
 
     # Start proxy service
     await proxy_service.startup()

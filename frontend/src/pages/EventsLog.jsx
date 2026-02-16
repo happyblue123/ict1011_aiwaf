@@ -21,9 +21,7 @@ const EventsLog = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // ✅ Live anchor time (so polling returns logs AFTER you enter live mode)
   const [liveStartTime, setLiveStartTime] = useState(null);
-
   const [selectedLog, setSelectedLog] = useState(null);
 
   // Pagination
@@ -31,19 +29,17 @@ const EventsLog = () => {
   const [totalPages, setTotalPages] = useState(1);
   const ITEMS_PER_PAGE = 20;
 
-  // Live polling
   const liveIntervalRef = useRef(null);
 
-  // ✅ When user selects live preset, capture a stable anchor timestamp
   const onTimePresetChange = (e) => {
     const v = e.target.value;
     setTimePreset(v);
 
     if (v === "live") {
-      const nowIso = new Date().toISOString(); // backend should parse ISO
+      const nowIso = new Date().toISOString();
       setLiveStartTime(nowIso);
-      setLogs([]);            // visual “fresh stream”
-      setCurrentPage(1);      // live mode should stay on page 1
+      setLogs([]);
+      setCurrentPage(1);
     } else {
       setLiveStartTime(null);
     }
@@ -57,22 +53,18 @@ const EventsLog = () => {
 
       const queryParams = {
         limit: ITEMS_PER_PAGE,
-        page: isLive ? 1 : currentPage,   // ✅ force page 1 for live
+        page: isLive ? 1 : currentPage,
         time_mode: timeMode,
       };
 
-      // ✅ Live mode: use AFTER with the captured anchor
       if (isLive) {
-        if (!liveStartTime) return; // not ready
+        if (!liveStartTime) return;
         queryParams.time_mode = "after";
         queryParams.start_date = liveStartTime;
-      }
-      // Normal preset ranges
-      else if (timeMode === "preset") {
+      } else if (timeMode === "preset") {
         queryParams.time_preset = timePreset;
       }
 
-      // Custom ranges
       if (timeMode === 'after' || timeMode === 'between') queryParams.start_date = startDate;
       if (timeMode === 'before' || timeMode === 'between') queryParams.end_date = endDate;
 
@@ -86,7 +78,6 @@ const EventsLog = () => {
       setLogs(Array.isArray(data.logs) ? data.logs : []);
       setTotalPages(data.pagination?.total_pages || 1);
 
-      // keep UI page consistent in live mode
       if (isLive) setCurrentPage(1);
 
     } catch (err) {
@@ -98,10 +89,8 @@ const EventsLog = () => {
     }
   };
 
-  // reset page when filters change (but live forces page 1 anyway)
   useEffect(() => { setCurrentPage(1); }, [timeMode, timePreset, startDate, endDate]);
 
-  // fetch + live polling
   useEffect(() => {
     const timer = setTimeout(() => fetchLogs(), 300);
 
@@ -155,14 +144,11 @@ const EventsLog = () => {
                 ? <Zap className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500 fill-red-500" size={16} />
                 : <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
               }
-
               <select
                 value={timePreset}
                 onChange={onTimePresetChange}
                 className={`pl-9 pr-8 py-2 rounded-lg border text-sm focus:outline-none cursor-pointer font-bold ${
-                  timePreset === 'live'
-                    ? 'border-red-200 bg-red-50 text-red-700'
-                    : 'border-gray-200 bg-gray-50 text-gray-700'
+                  timePreset === 'live' ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 bg-gray-50 text-gray-700'
                 }`}
               >
                 <option value="live">⚡️ Live Real-Time</option>
@@ -173,32 +159,6 @@ const EventsLog = () => {
                 <option value="7d">Last 7 Days</option>
                 <option value="all">All Time</option>
               </select>
-            </div>
-          )}
-
-          {(timeMode === 'after' || timeMode === 'between') && (
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-              <input
-                type="datetime-local"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm w-48" step="1"
-              />
-            </div>
-          )}
-
-          {timeMode === 'between' && <span className="text-gray-400 text-xs font-bold uppercase">TO</span>}
-
-          {(timeMode === 'before' || timeMode === 'between') && (
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-              <input
-                type="datetime-local"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm w-48" step="1"
-              />
             </div>
           )}
 
@@ -221,26 +181,27 @@ const EventsLog = () => {
                 <th className="px-6 py-4">Request URI</th>
                 <th className="px-6 py-4">Attack Type</th>
                 <th className="px-6 py-4">Anomaly</th>
+                <th className="px-6 py-4">Classification</th>
                 <th className="px-6 py-4">Action</th>
                 <th className="px-6 py-4 text-center">Inspect</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
-              {loading ? (
-                <tr><td colSpan="9" className="p-8 text-center text-gray-500">Loading events...</td></tr>
+              {loading && logs.length === 0 ? (
+                <tr><td colSpan="10" className="p-8 text-center text-gray-500">Loading events...</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan="9" className="p-8 text-center text-gray-500">
-                  {timePreset === 'live' ? "Waiting for new real-time events..." : "No logs found."}
-                </td></tr>
-              ) : logs.map((log) => (
-                <tr key={log.id} className="hover:bg-blue-50/50 transition-colors animate-fade-in">
+                <tr><td colSpan="10" className="p-8 text-center text-gray-500">No logs found.</td></tr>
+              ) : logs.map((log, index) => (
+                <tr key={log.raw_log?.request_id || index} className="hover:bg-blue-50/50 transition-colors animate-fade-in">
                   <td className="px-6 py-3 whitespace-nowrap text-gray-600 font-mono text-xs">
-                    {log.timestamp ? new Date(log.timestamp).toLocaleString() : "—"}
+                    {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : "—"}
                   </td>
 
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-gray-700">{log.source_ip}</span>
+                      <span className={`font-mono font-bold ${log.source_ip === '127.0.0.1' ? 'text-blue-500' : 'text-gray-700'}`}>
+                        {log.source_ip === '127.0.0.1' ? 'localhost' : log.source_ip}
+                      </span>
                       <span className="text-[10px] bg-gray-200 px-1.5 rounded text-gray-600">{log.geo_location}</span>
                     </div>
                   </td>
@@ -248,59 +209,48 @@ const EventsLog = () => {
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">
                       <Server size={14} className="text-gray-400" />
-                      <span className="font-mono text-gray-600">
-                        {log.destination_ip || "—"}
-                      </span>
+                      <span className="font-mono text-gray-600">{log.destination_ip || "waf"}</span>
                     </div>
                   </td>
 
                   <td className="px-6 py-3">
                     <span className="px-2 py-1 text-[10px] font-bold rounded border border-gray-200 bg-gray-50 text-gray-700">
-                      {log.http_method || "—"}
+                      {log.http_method}
                     </span>
                   </td>
 
                   <td className="px-6 py-3">
-                    <div
-                      className="font-mono text-[11px] text-gray-700 truncate max-w-[260px]"
-                      title={log.request_path || ""}
-                    >
-                      {log.request_path || "—"}
+                    <div className="font-mono text-[11px] text-gray-700 truncate max-w-[260px]" title={log.request_path}>
+                      {log.request_path}
                     </div>
                   </td>
 
                   <td className="px-6 py-3">
-                    <span
-                      className={`text-xs font-bold ${
-                        log.attack_type === 'None'
-                          ? 'text-gray-400'
-                          : log.attack_type === 'baseline_allow'
-                            ? 'text-gray-300'
-                            : 'text-red-600'
-                      }`}
-                    >
-                      {log.attack_type === 'baseline_allow'
-                        ? '—'
-                        : log.attack_type === 'None'
-                          ? 'Clean'
-                          : log.attack_type}
+                    <span className={`text-xs font-bold ${log.attack_type === 'None' ? 'text-gray-400' : 'text-red-600'}`}>
+                      {log.attack_type}
                     </span>
                   </td>
 
                   <td className="px-6 py-3">
                     {log.raw_log?.ai?.flagged ? (
                       <span className="px-2 py-1 text-[10px] font-bold rounded border bg-purple-100 text-purple-700 border-purple-200">
-                        ANOMALY{typeof log.raw_log?.ai?.score === "number" ? ` (${log.raw_log.ai.score.toFixed(3)})` : ""}
+                        ANOMALY ({log.raw_log.ai.score?.toFixed(3)})
                       </span>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
+                    ) : <span className="text-gray-300">—</span>}
                   </td>
 
                   <td className="px-6 py-3">
-                    <span className={`px-2 py-1 text-[10px] font-bold rounded border ${
-                      ACTION_CLASS[log.action_taken] || ACTION_CLASS.ALLOWED
-                    }`}>
+                    {typeof log.raw_log?.ai?.classification_score === "number" ? (
+                      <span className={`px-2 py-1 text-[10px] font-bold rounded border ${
+                        log.raw_log.ai.classification_blocked ? "bg-red-100 text-red-700 border-red-200" : "bg-green-100 text-green-700 border-green-200"
+                      }`}>
+                        {log.raw_log.ai.classification_blocked ? "MALICIOUS" : "BENIGN"} ({log.raw_log.ai.classification_score.toFixed(3)})
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
+
+                  <td className="px-6 py-3">
+                    <span className={`px-2 py-1 text-[10px] font-bold rounded border ${ACTION_CLASS[log.action_taken] || ACTION_CLASS.ALLOWED}`}>
                       {log.action_taken}
                     </span>
                   </td>
@@ -319,28 +269,20 @@ const EventsLog = () => {
         {/* PAGINATION */}
         <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
           <div className="text-xs text-gray-500">
-            Page <span className="font-bold">{currentPage}</span> of <span className="font-bold">{totalPages || 1}</span>
+            Page <span className="font-bold">{currentPage}</span> of <span className="font-bold">{totalPages}</span>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1 || (timeMode === "preset" && timePreset === "live")}
-              className={`p-2 rounded-lg border ${
-                (currentPage === 1 || (timeMode === "preset" && timePreset === "live"))
-                  ? 'text-gray-300 border-gray-200 cursor-not-allowed'
-                  : 'text-gray-600 border-gray-300 hover:bg-white'
-              }`}
+              className="p-2 rounded-lg border disabled:opacity-30"
             >
               <ChevronLeft size={16} />
             </button>
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages || totalPages === 0 || (timeMode === "preset" && timePreset === "live")}
-              className={`p-2 rounded-lg border ${
-                (currentPage === totalPages || totalPages === 0 || (timeMode === "preset" && timePreset === "live"))
-                  ? 'text-gray-300 border-gray-200 cursor-not-allowed'
-                  : 'text-gray-600 border-gray-300 hover:bg-white'
-              }`}
+              disabled={currentPage === totalPages || (timeMode === "preset" && timePreset === "live")}
+              className="p-2 rounded-lg border disabled:opacity-30"
             >
               <ChevronRight size={16} />
             </button>
@@ -351,7 +293,7 @@ const EventsLog = () => {
       {/* INSPECTOR */}
       {selectedLog && (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-          <div className="bg-white w-full max-w-md h-full shadow-2xl p-6 flex flex-col animate-slide-in-right">
+          <div className="bg-white w-full max-w-xl h-full shadow-2xl p-6 flex flex-col animate-slide-in-right overflow-hidden">
             <div className="flex justify-between items-center mb-6 pb-4 border-b">
               <h2 className="text-xl font-bold text-gray-800">Event Details #{selectedLog.id}</h2>
               <button onClick={() => setSelectedLog(null)} className="p-2 hover:bg-gray-100 rounded-full">
@@ -360,23 +302,25 @@ const EventsLog = () => {
             </div>
 
             <div className="space-y-6 flex-1 overflow-y-auto">
-              <div className="p-4 bg-gray-50 rounded font-mono text-sm space-y-2">
-                <p><span className="font-bold text-gray-500">Time:</span> {selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : "—"}</p>
-                <p><span className="font-bold text-gray-500">Source:</span> {selectedLog.source_ip} ({selectedLog.geo_location})</p>
-                <p><span className="font-bold text-gray-500">Dest:</span> {selectedLog.destination_ip}</p>
-                <p><span className="font-bold text-gray-500">Method:</span> {selectedLog.http_method || "—"}</p>
-                <p><span className="font-bold text-gray-500">Params:</span> {selectedLog.request_params || "—"}</p>
-                <p><span className="font-bold text-gray-500">Path:</span><br />{selectedLog.request_path}</p>
+              <div className="p-4 bg-gray-50 rounded font-mono text-sm space-y-2 border">
+                <p><span className="font-bold text-gray-400">Time:</span> {selectedLog.timestamp}</p>
+                <p><span className="font-bold text-gray-400">Source:</span> {selectedLog.source_ip} ({selectedLog.geo_location})</p>
+                <p><span className="font-bold text-gray-400">Dest:</span> {selectedLog.destination_ip}</p>
+                <p><span className="font-bold text-gray-400">Method:</span> {selectedLog.http_method}</p>
+                <p><span className="font-bold text-gray-400">Path:</span><br/><span className="text-blue-600">{selectedLog.request_path}</span></p>
+                <p><span className="font-bold text-gray-400">Params:</span> {selectedLog.request_params}</p>
+              </div>
 
-                <pre className="text-xs bg-gray-900 text-green-200 p-3 rounded overflow-auto">
-{JSON.stringify(selectedLog.raw_log, null, 2)}
+              <div>
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Raw Payload</h3>
+                <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto max-h-[500px]">
+                  {JSON.stringify(selectedLog.raw_log, null, 2)}
                 </pre>
               </div>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };

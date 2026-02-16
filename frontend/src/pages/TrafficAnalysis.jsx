@@ -226,15 +226,24 @@ export default function TrafficAnalysis() {
           <Globe size={18} className="text-blue-500" /> Geographic Distribution
         </h3>
 
-        {!data?.geoip_enabled ? (
+        {/* Only show warning if NOT loading and geoip is explicitly disabled */}
+        {!loading && data && !data.geoip_enabled && (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-            GeoIP is not enabled on the backend (GeoLite2 database not found). Showing "Local/Private" and "Unknown".
+            GeoIP is not enabled on the backend (GeoLite2 database not found). 
+            Showing "Local/Private" and "Unknown".
           </div>
-        ) : null}
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {topCountries.length === 0 ? (
-            <div className="text-sm text-gray-500">No geo data available for this range.</div>
+          {loading ? (
+              // Show placeholders during load
+              [...Array(4)].map((_, i) => (
+                  <div key={i} className="h-12 bg-gray-100 animate-pulse rounded-lg"></div>
+              ))
+          ) : topCountries.length === 0 ? (
+            <div className="text-sm text-gray-500 col-span-full py-4 text-center">
+              No geo data available for this range.
+            </div>
           ) : (
             topCountries.map((row) => (
               <div key={row.country} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">

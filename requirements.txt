@@ -20,6 +20,7 @@ scikit-learn
 pandas
 numpy               # Required dependency for AI models
 joblib
+nltk
 
 # --- Web Scraping & Utilities ---
 scrapy

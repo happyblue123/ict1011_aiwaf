@@ -28,7 +28,7 @@ class LogsController:
 
     @staticmethod
     def _to_display_row(log_id: int, raw):
-        # raw_log might be JSON string from MySQL
+        # 1. Parse raw_log if it's a JSON string from the database
         if isinstance(raw, (str, bytes, bytearray)):
             try:
                 raw = json.loads(raw)
@@ -38,14 +38,15 @@ class LogsController:
         if not isinstance(raw, dict):
             raw = {}
 
+        # 2. Extract nested objects for easier access
         decision = raw.get("decision") or {}
         reasons = decision.get("reasons") or []
+        client_data = raw.get("client") or {}
+        dest_data = raw.get("destination") or {}
 
-        # ---- attack type (DISPLAY ONLY, no filtering) ----
-        # Use first meaningful reason, but if only baseline_allow exists, show baseline_allow
+        # ---- attack type logic ----
         attack_type = "None"
         if reasons:
-            # try to find a non-baseline reason first
             picked = None
             for r in reasons:
                 s = str(r)
@@ -54,16 +55,15 @@ class LogsController:
                     continue
                 picked = head
                 break
-
+            
             if picked is None:
-                # fallback to first reason (often baseline_allow)
                 s0 = str(reasons[0])
                 head0 = s0.split(":")[0] if ":" in s0 else s0
                 picked = head0
-
+            
             attack_type = picked
 
-        # ---- action taken ----
+        # ---- action taken (Mapping to UI constants) ----
         action_raw = (decision.get("effective_action") or decision.get("action") or "allow").lower()
         if action_raw == "block":
             action_taken = "BLOCKED"
@@ -72,22 +72,16 @@ class LogsController:
         else:
             action_taken = "ALLOWED"
 
-        # ---- method ----
+        # ---- source & geo logic (Fixing the "Unknown" issue) ----
+        source_ip = client_data.get("ip") or raw.get("client_ip") or "127.0.0.1"
+        country = client_data.get("country") or "Local"
+        flag = client_data.get("flag") or "🏠"
+        geo_location = f"{flag} {country}"
+
+        # ---- method & path ----
         http_method = (raw.get("method") or "—").upper()
-
-        # ---- request params (querystring) ----
-        request_params = raw.get("query") or ""
-        raw_target_wire = raw.get("raw_target_wire") or ""
-
-        if not request_params and isinstance(raw_target_wire, str):
-            qidx = raw_target_wire.find("?")
-            if qidx != -1 and qidx < len(raw_target_wire) - 1:
-                request_params = raw_target_wire[qidx + 1 :]
-
-        if not request_params:
-            request_params = "—"
-
-        # ---- request path ----
+        
+        # Logic to find the path (preferring wire path for full visibility)
         request_path = (
             raw.get("raw_target_wire")
             or raw.get("normalized_path")
@@ -96,29 +90,33 @@ class LogsController:
         )
 
         # ---- destination ----
-        dest = raw.get("destination")
-        dest_target = None
-        if isinstance(dest, dict):
-            dest_target = dest.get("target")
+        destination_ip = dest_data.get("target") or raw.get("destination_ip") or "WAF"
 
-        destination_ip = dest_target or raw.get("destination_ip") or "waf"
+        # ---- request params (querystring) ----
+        request_params = raw.get("query") or ""
+        if not request_params and isinstance(raw.get("raw_target_wire"), str):
+            raw_wire = raw.get("raw_target_wire")
+            qidx = raw_wire.find("?")
+            if qidx != -1 and qidx < len(raw_wire) - 1:
+                request_params = raw_wire[qidx + 1 :]
+        
+        if not request_params:
+            request_params = "—"
 
+        # 3. Return the flattened dictionary the Frontend expects
         return {
             "id": log_id,
+            "request_id": raw.get("request_id"), # Useful for React keys
             "timestamp": raw.get("ts"),
-            "source_ip": raw.get("client_ip", "unknown"),
+            "source_ip": source_ip,
             "destination_ip": destination_ip,
-            "geo_location": raw.get("geo_location", "N/A"),
-
+            "geo_location": geo_location,
             "http_method": http_method,
             "request_params": request_params,
             "request_path": request_path,
-
-            # ✅ keep attack_type for UI display
             "attack_type": attack_type,
             "action_taken": action_taken,
-
-            "raw_log": raw,
+            "raw_log": raw, # Keep the full object for the "Inspect" Eye icon
         }
 
     @staticmethod

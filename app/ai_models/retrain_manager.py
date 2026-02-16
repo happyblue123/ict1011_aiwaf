@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent  # app/ai_models
 STATE_FILE = BASE_DIR / "retrain_state.json"
 LOCK_FILE = BASE_DIR / "retrain.lock"
 
-THRESHOLD = 1000  # set back to 1000 later
+THRESHOLD = 500  # set back to 1000 later
 
 
 def _load_state() -> Dict[str, Any]:
