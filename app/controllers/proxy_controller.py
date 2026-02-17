@@ -14,8 +14,8 @@ from app.ai_models.retrain_manager import increment_baseline_counter, trigger_re
 
 router = APIRouter()
 waf = WAFEngine()
-AI_LOG_THRESHOLD = 0.65
-AI_CLASSIFICATION_THRESHOLD  = 0.90
+AI_LOG_THRESHOLD = 0.7
+AI_CLASSIFICATION_THRESHOLD  = 0.95
 
 def _get_waf_mode(request: Request) -> str:
     """
