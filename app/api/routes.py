@@ -337,4 +337,7 @@ def get_settings(request: Request):
 @router.put("/settings")
 def update_settings(payload: SettingsUpdate, request: Request):
     user = _require_user(request)
-    return SettingsController.update_settings(user["user_id"], payload.model_dump(exclude_none=True))
+    result = SettingsController.update_settings(user["user_id"], payload.model_dump(exclude_none=True))
+    # Refresh runtime WAF config so mode change takes effect immediately
+    request.app.state.waf_config = get_active_waf_config()
+    return result
