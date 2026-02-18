@@ -16,8 +16,19 @@ EXEC_PRIMITIVE_RE = re.compile(r"(?:\$\(|`[^`]{1,200}`)")  # $(...) or `...`
 # (Keep this list conservative for V1)
 COMMAND_WORD_RE = re.compile(
     r"\b(?:"
+    # Linux
     r"cat|ls|pwd|whoami|id|uname|"
+    r"rm|cp|mv|chmod|chown|kill|ps|env|export|printenv|"
+    r"ifconfig|iptables|passwd|crontab|"
+    r"scp|ssh|telnet|nmap|dd|tar|zip|"
+    r"head|tail|grep|awk|sed|sort|tee|"
+    # Windows
+    r"dir|type|net|tasklist|taskkill|systeminfo|"
+    r"reg|wmic|sc|echo|ping|nslookup|more|copy|del|rmdir|mkdir|"
+    r"rename|move|find|findstr|"
+    # Network / download
     r"curl|wget|nc|netcat|"
+    # Interpreters
     r"bash|sh|powershell|cmd|"
     r"python|perl|php|ruby|ipconfig"
     r")\b",
