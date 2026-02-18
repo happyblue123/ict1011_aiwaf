@@ -8,8 +8,7 @@ import {
   Activity, 
   Settings2, 
   MapPin, 
-  Clock, 
-  Lock
+  Clock
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -227,9 +226,7 @@ const DDoSDashboard = () => {
               ))}
             </div>
           </div>
-          <button className="w-full mt-6 py-3 bg-gray-900 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors">
-            <Lock size={16} /> Deploy New Policy
-          </button>
+
         </div>
       </div>
 
