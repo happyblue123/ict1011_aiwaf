@@ -7,10 +7,14 @@ from app.waf.rules.command_injection import command_injection_checks
 from app.waf.rules.generic_injection import generic_injection_checks
 from app.waf.rate_limiter import RateLimiter
 from app.waf.rules.ip_policy import apply_ip_policy
+from app.waf.bot_detection import BotDetector
+from app.waf.zombie_filter import ZombieFilter
 
 class WAFEngine:
     def __init__(self) -> None:
         self.rate_limiter = RateLimiter()
+        self.bot_detector = BotDetector()
+        self.zombie_filter = ZombieFilter()
 
     def evaluate(self, req) -> Decision:
         # 1️⃣ IP allow/block FIRST (hard override)
@@ -31,10 +35,20 @@ class WAFEngine:
             if hit:
                 return hit
 
-        # 3️⃣ Stateful rate limiting LAST
+        # 3️⃣ Behavioral bot detection
+        hit = self.bot_detector.check(req)
+        if hit:
+            return hit
+
+        # 4️⃣ Zombie-request filtering
+        hit = self.zombie_filter.check(req)
+        if hit:
+            return hit
+
+        # 5️⃣ Stateful rate limiting
         hit = self.rate_limiter.check(req.client_ip, req.normalized_path)
         if hit:
             return hit
 
-        # 4️⃣ Default allow
+        # 6️⃣ Default allow
         return Decision(Action.ALLOW, ["baseline_allow"])
