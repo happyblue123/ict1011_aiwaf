@@ -2,7 +2,7 @@
 -- NeuroWAF schema (SAFE / idempotent)
 -- Will NOT drop tables or delete data.
 -- ==========================================
-DROP DATABASE neurowaf_db;
+-- DROP DATABASE neurowaf_db;
 CREATE DATABASE IF NOT EXISTS neurowaf_db
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
