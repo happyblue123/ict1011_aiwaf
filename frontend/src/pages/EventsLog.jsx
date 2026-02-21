@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap
+  RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap,
+  BrainCircuit, Shield, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 const API_BASE_URL = "/api";
@@ -9,6 +10,208 @@ const ACTION_CLASS = {
   BLOCKED: 'bg-red-100 text-red-700 border-red-200',
   ALLOWED: 'bg-green-100 text-green-700 border-green-200',
   FLAGGED: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+};
+
+// --- Score Gauge Bar Component ---
+const ScoreGauge = ({ label, score, threshold, thresholdLabel }) => {
+  const pct = Math.min(Math.max((score || 0) * 100, 0), 100);
+  const thresholdPct = (threshold || 0) * 100;
+  const isAbove = pct >= thresholdPct;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="font-medium text-gray-600">{label}</span>
+        <span className={`font-bold ${isAbove ? 'text-red-600' : 'text-green-600'}`}>
+          {score != null ? score.toFixed(3) : 'N/A'}
+        </span>
+      </div>
+      <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full transition-all"
+          style={{
+            width: `${pct}%`,
+            background: pct < 40 ? '#22c55e' : pct < 70 ? '#f59e0b' : '#ef4444',
+          }}
+        />
+        {threshold != null && (
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-gray-800"
+            style={{ left: `${thresholdPct}%` }}
+            title={thresholdLabel || `Threshold: ${threshold}`}
+          />
+        )}
+      </div>
+      {threshold != null && (
+        <div className="text-[10px] text-gray-400" style={{ paddingLeft: `${Math.max(thresholdPct - 5, 0)}%` }}>
+          {thresholdLabel || `Threshold ${threshold}`}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- WAF Layer Parser ---
+const parseWafLayer = (reasons) => {
+  if (!reasons || !reasons.length) return 'Unknown';
+  const first = reasons[0] || '';
+  if (first.startsWith('ip_policy')) return 'IP Policy';
+  if (first.startsWith('protocol')) return 'Protocol Check';
+  if (first.startsWith('traversal')) return 'Path Traversal';
+  if (first.startsWith('sqli')) return 'SQL Injection';
+  if (first.startsWith('xss')) return 'XSS Detection';
+  if (first.startsWith('cmd_injection')) return 'Command Injection';
+  if (first.startsWith('generic_injection')) return 'Generic Injection';
+  if (first.startsWith('bot')) return 'Bot Detection';
+  if (first.startsWith('zombie')) return 'Zombie Filter';
+  if (first.startsWith('rate_limit')) return 'Rate Limiter';
+  if (first.startsWith('AI_ANOMALY')) return 'AI Anomaly Detection';
+  if (first.startsWith('AI_CLASSIFICATION')) return 'AI Classification';
+  if (first === 'baseline_allow') return 'Passed All Checks';
+  return first.split(':')[0];
+};
+
+// --- Verdict Badge ---
+const getVerdict = (ai) => {
+  if (!ai) return { label: 'NO AI DATA', color: 'bg-gray-100 text-gray-600' };
+  if (ai.classification_blocked) return { label: 'MALICIOUS', color: 'bg-red-100 text-red-700' };
+  if (ai.flagged) return { label: 'SUSPICIOUS', color: 'bg-amber-100 text-amber-700' };
+  if (ai.model_ready === false) return { label: 'MODEL NOT READY', color: 'bg-gray-100 text-gray-500' };
+  return { label: 'BENIGN', color: 'bg-green-100 text-green-700' };
+};
+
+// --- Enhanced Inspector Drawer ---
+const InspectorDrawer = ({ log, onClose }) => {
+  const [showRawJson, setShowRawJson] = useState(false);
+  const ai = log.raw_log?.ai || {};
+  const decision = log.raw_log?.decision || {};
+  const verdict = getVerdict(ai);
+  const wafLayer = parseWafLayer(decision.reasons);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+      <div className="bg-white w-full max-w-xl h-full shadow-2xl p-6 flex flex-col animate-slide-in-right overflow-hidden">
+        <div className="flex justify-between items-center mb-6 pb-4 border-b">
+          <h2 className="text-xl font-bold text-gray-800">Event Details #{log.id}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-5 flex-1 overflow-y-auto">
+          {/* Request Summary */}
+          <div className="p-4 bg-gray-50 rounded-lg font-mono text-sm space-y-2 border">
+            <p><span className="font-bold text-gray-400">Time:</span> {log.timestamp}</p>
+            <p><span className="font-bold text-gray-400">Source:</span> {log.source_ip} ({log.geo_location})</p>
+            <p><span className="font-bold text-gray-400">Dest:</span> {log.destination_ip}</p>
+            <p><span className="font-bold text-gray-400">Method:</span> {log.http_method}</p>
+            <p><span className="font-bold text-gray-400">Path:</span><br/><span className="text-blue-600">{log.request_path}</span></p>
+            <p><span className="font-bold text-gray-400">Params:</span> {log.request_params}</p>
+          </div>
+
+          {/* WAF Decision */}
+          <div className="p-4 bg-gray-50 rounded-lg border space-y-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <Shield size={14} /> WAF Decision
+            </h3>
+            <div className="flex items-center gap-3">
+              <span className={`px-3 py-1 text-xs font-bold rounded-full border ${
+                ACTION_CLASS[log.action_taken] || ACTION_CLASS.ALLOWED
+              }`}>
+                {log.action_taken}
+              </span>
+              <span className="text-xs text-gray-500">
+                Triggered by: <span className="font-semibold text-gray-700">{wafLayer}</span>
+              </span>
+            </div>
+            {decision.reasons && decision.reasons.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {decision.reasons.map((r, i) => (
+                  <span key={i} className="px-2 py-0.5 text-[10px] font-mono bg-gray-200 text-gray-700 rounded">
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* AI Analysis */}
+          <div className="p-4 bg-purple-50/50 rounded-lg border border-purple-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-purple-500 uppercase tracking-widest flex items-center gap-2">
+                <BrainCircuit size={14} /> AI Analysis
+              </h3>
+              <span className={`px-3 py-1 text-[11px] font-bold rounded-full ${verdict.color}`}>
+                {verdict.label}
+              </span>
+            </div>
+
+            {/* Combined Anomaly Score */}
+            <ScoreGauge
+              label="Combined Anomaly Score"
+              score={ai.score}
+              threshold={0.70}
+              thresholdLabel="Block at 0.70"
+            />
+
+            {/* Ensemble Breakdown */}
+            {(ai.if_score != null || ai.ae_score != null) && (
+              <div className="pl-3 border-l-2 border-purple-200 space-y-3">
+                <div className="text-[10px] font-bold text-purple-400 uppercase">Ensemble Breakdown</div>
+                <ScoreGauge
+                  label="Isolation Forest"
+                  score={ai.if_score}
+                  threshold={null}
+                />
+                <ScoreGauge
+                  label="Autoencoder"
+                  score={ai.ae_score}
+                  threshold={null}
+                />
+                {ai.ae_mse != null && (
+                  <div className="text-[10px] text-gray-400">
+                    Autoencoder MSE: <span className="font-mono font-bold">{ai.ae_mse.toFixed(6)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Classification Score */}
+            {ai.classification_score != null && (
+              <ScoreGauge
+                label="Classification (Malicious Probability)"
+                score={ai.classification_score}
+                threshold={0.95}
+                thresholdLabel="Block at 0.95"
+              />
+            )}
+
+            {ai.model_ready === false && (
+              <div className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded border border-amber-200">
+                AI model is not yet trained. Send more traffic to build a baseline.
+              </div>
+            )}
+          </div>
+
+          {/* Raw JSON (Collapsible) */}
+          <div>
+            <button
+              onClick={() => setShowRawJson(!showRawJson)}
+              className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-gray-600"
+            >
+              {showRawJson ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              Raw Payload
+            </button>
+            {showRawJson && (
+              <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto max-h-[400px] mt-2">
+                {JSON.stringify(log.raw_log, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const EventsLog = () => {
@@ -292,34 +495,7 @@ const EventsLog = () => {
 
       {/* INSPECTOR */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-          <div className="bg-white w-full max-w-xl h-full shadow-2xl p-6 flex flex-col animate-slide-in-right overflow-hidden">
-            <div className="flex justify-between items-center mb-6 pb-4 border-b">
-              <h2 className="text-xl font-bold text-gray-800">Event Details #{selectedLog.id}</h2>
-              <button onClick={() => setSelectedLog(null)} className="p-2 hover:bg-gray-100 rounded-full">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="space-y-6 flex-1 overflow-y-auto">
-              <div className="p-4 bg-gray-50 rounded font-mono text-sm space-y-2 border">
-                <p><span className="font-bold text-gray-400">Time:</span> {selectedLog.timestamp}</p>
-                <p><span className="font-bold text-gray-400">Source:</span> {selectedLog.source_ip} ({selectedLog.geo_location})</p>
-                <p><span className="font-bold text-gray-400">Dest:</span> {selectedLog.destination_ip}</p>
-                <p><span className="font-bold text-gray-400">Method:</span> {selectedLog.http_method}</p>
-                <p><span className="font-bold text-gray-400">Path:</span><br/><span className="text-blue-600">{selectedLog.request_path}</span></p>
-                <p><span className="font-bold text-gray-400">Params:</span> {selectedLog.request_params}</p>
-              </div>
-
-              <div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Raw Payload</h3>
-                <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto max-h-[500px]">
-                  {JSON.stringify(selectedLog.raw_log, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </div>
-        </div>
+        <InspectorDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
       )}
     </div>
   );

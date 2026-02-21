@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   User,
-  Lock,
   Shield,
   Key,
   Globe,
@@ -47,7 +46,6 @@ const SettingsPage = () => {
 
   // Toggles
   const [geoBlocking, setGeoBlocking] = useState(true);
-  const [rateLimiting, setRateLimiting] = useState(true);
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -74,7 +72,6 @@ const SettingsPage = () => {
 
         // Toggles
         setGeoBlocking(data.toggles?.geo_blocking ?? true);
-        setRateLimiting(data.toggles?.rate_limiting ?? true);
       } catch (err) {
         console.error(err);
         setErrorMessage('Could not load settings. Is the database configured?');
@@ -96,7 +93,6 @@ const SettingsPage = () => {
       waf: { waf_mode: wafMode },
       toggles: {
         geo_blocking: geoBlocking,
-        rate_limiting: rateLimiting,
       },
     };
 
@@ -233,24 +229,25 @@ const SettingsPage = () => {
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
             <SectionHeader icon={Shield} title="Global Security Policies" description="Apply system-wide protection rules." />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors cursor-pointer">
-                <div className="flex justify-between items-start mb-2">
-                  <Globe size={20} className="text-gray-400" />
-                  <Toggle enabled={geoBlocking} setEnabled={setGeoBlocking} />
-                </div>
-                <h4 className="font-bold text-sm text-gray-800">Geo-Blocking</h4>
-                <p className="text-xs text-gray-500 mt-1">Automatically block traffic from high-risk regions based on threat intel.</p>
+            <div className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+              <div className="flex justify-between items-start mb-2">
+                <Globe size={20} className="text-gray-400" />
+                <Toggle enabled={geoBlocking} setEnabled={setGeoBlocking} />
               </div>
-
-              <div className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors cursor-pointer">
-                <div className="flex justify-between items-start mb-2">
-                  <Lock size={20} className="text-gray-400" />
-                  <Toggle enabled={rateLimiting} setEnabled={setRateLimiting} />
+              <h4 className="font-bold text-sm text-gray-800">Geo-Blocking</h4>
+              <p className="text-xs text-gray-500 mt-1">
+                Automatically block traffic from high-risk regions (RU, CN, KP, IR) based on threat intelligence.
+                Uses real-time GeoIP lookups to identify request origin countries.
+              </p>
+              {geoBlocking && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {['Russia', 'China', 'North Korea', 'Iran'].map((c) => (
+                    <span key={c} className="px-2 py-0.5 text-[10px] font-bold bg-red-50 text-red-600 rounded border border-red-200">
+                      {c}
+                    </span>
+                  ))}
                 </div>
-                <h4 className="font-bold text-sm text-gray-800">Strict Rate Limiting</h4>
-                <p className="text-xs text-gray-500 mt-1">Enforce aggressive API limits on unauthenticated endpoints.</p>
-              </div>
+              )}
             </div>
           </div>
 

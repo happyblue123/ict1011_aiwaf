@@ -21,13 +21,14 @@ class GeoIPService:
     """
 
     def __init__(self):
-        self._cache: Dict[str, Tuple[str, str]] = {}
+        # cache stores (country_name, country_code, flag_emoji)
+        self._cache: Dict[str, Tuple[str, str, str]] = {}
 
     def is_enabled(self) -> bool:
         return True
 
-    def lookup_country(self, ip: str) -> Tuple[str, str]:
-        # Fast path: cache
+    def _lookup(self, ip: str) -> Tuple[str, str, str]:
+        """Internal: returns (country_name, country_code, flag_emoji)."""
         cached = self._cache.get(ip)
         if cached:
             return cached
@@ -42,11 +43,11 @@ class GeoIPService:
                 or addr.is_reserved
                 or addr.is_multicast
             ):
-                result = ("Local/Private", "🏠")
+                result = ("Local/Private", "", "🏠")
                 self._cache[ip] = result
                 return result
         except Exception:
-            result = ("Unknown", "🏳️")
+            result = ("Unknown", "", "🏳️")
             self._cache[ip] = result
             return result
 
@@ -54,23 +55,33 @@ class GeoIPService:
         try:
             r = requests.get(f"http://ip-api.com/json/{ip}", timeout=2)
             if r.status_code != 200:
-                result = ("Unknown", "🏳️")
+                result = ("Unknown", "", "🏳️")
                 self._cache[ip] = result
                 return result
 
             data = r.json()
             if data.get("status") != "success":
-                result = ("Unknown", "🏳️")
+                result = ("Unknown", "", "🏳️")
                 self._cache[ip] = result
                 return result
 
             country = data.get("country") or "Unknown"
-            iso2 = data.get("countryCode")
-            result = (country, _flag_from_iso2(iso2))
+            iso2 = data.get("countryCode") or ""
+            result = (country, iso2.upper(), _flag_from_iso2(iso2))
             self._cache[ip] = result
             return result
 
         except Exception:
-            result = ("Unknown", "🏳️")
+            result = ("Unknown", "", "🏳️")
             self._cache[ip] = result
             return result
+
+    def lookup_country(self, ip: str) -> Tuple[str, str]:
+        """Returns (country_name, flag_emoji) — backward compatible."""
+        name, _code, flag = self._lookup(ip)
+        return (name, flag)
+
+    def lookup_country_code(self, ip: str) -> str:
+        """Returns ISO-3166 2-letter country code (e.g. 'US', 'CN') or ''."""
+        _name, code, _flag = self._lookup(ip)
+        return code

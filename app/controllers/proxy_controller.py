@@ -101,9 +101,13 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
     
     if results["model_ready"]:
         try:
-            score = anomaly_ai.score(features)
+            detail = anomaly_ai.score_detail(features)
+            score = detail["combined"]
             results["score"] = score
-            
+            results["if_score"] = detail.get("if_score")
+            results["ae_score"] = detail.get("ae_score")
+            results["ae_mse"] = detail.get("ae_mse")
+
             if score >= AI_LOG_THRESHOLD:
                 results["flagged"] = True
                 decision.reasons = list(decision.reasons or [])
@@ -248,7 +252,8 @@ async def handle_all(request: Request, path: str):
     )
 
     # 4. Decision & AI Analysis
-    decision = waf.evaluate(req_norm)
+    geoip_service = getattr(request.app.state, "geoip_service", None)
+    decision = waf.evaluate(req_norm, geoip_service=geoip_service)
     ai_results = await _process_ai_analysis(request, req_norm, decision, waf_mode)
 
     effective_action = decision.action

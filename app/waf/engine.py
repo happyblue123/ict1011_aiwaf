@@ -9,20 +9,27 @@ from app.waf.rate_limiter import RateLimiter
 from app.waf.rules.ip_policy import apply_ip_policy
 from app.waf.bot_detection import BotDetector
 from app.waf.zombie_filter import ZombieFilter
+from app.waf.geo_block import GeoBlocker
 
 class WAFEngine:
     def __init__(self) -> None:
         self.rate_limiter = RateLimiter()
         self.bot_detector = BotDetector()
         self.zombie_filter = ZombieFilter()
+        self.geo_blocker = GeoBlocker()
 
-    def evaluate(self, req) -> Decision:
+    def evaluate(self, req, geoip_service=None) -> Decision:
         # 1️⃣ IP allow/block FIRST (hard override)
         ip_decision = apply_ip_policy(req.client_ip)
         if ip_decision:
             return ip_decision
 
-        # 2️⃣ Stateless rule checks (signatures / protocol / injections)
+        # 2️⃣ Geo-blocking (based on Settings toggle)
+        hit = self.geo_blocker.check(req.client_ip, geoip_service)
+        if hit:
+            return hit
+
+        # 3️⃣ Stateless rule checks (signatures / protocol / injections)
         for check in (
             protocol_checks,
             traversal_checks,
