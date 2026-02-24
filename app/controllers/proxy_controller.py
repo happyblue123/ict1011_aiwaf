@@ -146,6 +146,10 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
         except Exception as e:
             print(f"[AI] Baseline update failed: {e}")
 
+    # 4. Store features for analyst feedback (only for flagged/blocked requests)
+    if results["flagged"] or results["classification_blocked"] or decision.action == Action.BLOCK:
+        results["features"] = features
+
     return results
 
 def _log_waf_event(request: Request, req_norm: NormalizedRequest, decision, ai_results, 

@@ -112,3 +112,23 @@ CREATE TABLE IF NOT EXISTS sessions (
     CONSTRAINT fk_sessions_user
       FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- ==========================================
+-- 9. ANALYST FEEDBACK TABLE
+-- Human-in-the-loop learning: analysts mark
+-- AI detections as correct or false positive.
+-- ==========================================
+CREATE TABLE IF NOT EXISTS analyst_feedback (
+    feedback_id  INT AUTO_INCREMENT PRIMARY KEY,
+    log_id       INT NOT NULL,
+    user_id      INT NOT NULL,
+    label        ENUM('correct','false_positive') NOT NULL,
+    notes        TEXT NULL,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_fb_log   (log_id),
+    INDEX idx_fb_label (label),
+
+    CONSTRAINT fk_fb_user
+      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;

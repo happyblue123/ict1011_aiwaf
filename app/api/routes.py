@@ -36,6 +36,7 @@ from app.services.traffic_analysis_service import TrafficAnalysisService
 
 from app.controllers.ddos_controller import DdosController
 from app.controllers.overview_controller import OverviewController
+from app.controllers.feedback_controller import FeedbackController
 
 from app.db.db_bootstrap import (
     ensure_database_and_schema,
@@ -341,3 +342,50 @@ def update_settings(payload: SettingsUpdate, request: Request):
     # Refresh runtime WAF config so mode change takes effect immediately
     request.app.state.waf_config = get_active_waf_config()
     return result
+
+
+# ── Analyst Feedback (Human-in-the-Loop AI Learning) ──────
+class FeedbackCreate(BaseModel):
+    log_id: int
+    label: Literal["correct", "false_positive"]
+    notes: Optional[str] = None
+
+
+class FeedbackBatchRequest(BaseModel):
+    log_ids: List[int]
+
+
+@router.post("/feedback")
+def submit_feedback(payload: FeedbackCreate, request: Request):
+    user = _require_user(request)
+    result = FeedbackController.submit(
+        user_id=user["user_id"],
+        log_id=payload.log_id,
+        label=payload.label,
+        app=request.app,
+        notes=payload.notes,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=result.get("status", 400), detail=result["error"])
+    return result
+
+
+@router.get("/feedback/stats")
+def feedback_stats(request: Request):
+    _require_user(request)
+    return FeedbackController.get_stats()
+
+
+@router.get("/feedback/{log_id}")
+def get_feedback(log_id: int, request: Request):
+    _require_user(request)
+    fb = FeedbackController.get_feedback(log_id)
+    if not fb:
+        return {"feedback": None}
+    return {"feedback": fb}
+
+
+@router.post("/feedback/batch")
+def batch_feedback_status(payload: FeedbackBatchRequest, request: Request):
+    _require_user(request)
+    return FeedbackController.batch_status(payload.log_ids)

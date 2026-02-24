@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap,
-  BrainCircuit, Shield, ChevronDown, ChevronUp
+  BrainCircuit, Shield, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle
 } from 'lucide-react';
 
 const API_BASE_URL = "/api";
@@ -80,8 +80,160 @@ const getVerdict = (ai) => {
   return { label: 'BENIGN', color: 'bg-green-100 text-green-700' };
 };
 
+// --- Animated Checkmark SVG ---
+const AnimatedCheckmark = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="inline-block">
+    <path
+      d="M5 13l4 4L19 7"
+      stroke="#22c55e"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeDasharray="24"
+      className="animate-checkmark-draw"
+    />
+  </svg>
+);
+
+// --- Feedback Panel ---
+const FeedbackPanel = ({ log, onFeedbackSaved }) => {
+  const [label, setLabel] = useState(null);
+  const [notes, setNotes] = useState('');
+  const [showNotes, setShowNotes] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(null);
+  const [error, setError] = useState(null);
+  const [glowClass, setGlowClass] = useState('');
+
+  // Check for existing feedback on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/feedback/${log.id}`, { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.feedback) {
+            setSaved(data.feedback.label);
+          }
+        }
+      } catch {}
+    })();
+  }, [log.id]);
+
+  const submit = async (chosenLabel) => {
+    setLabel(chosenLabel);
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/feedback`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ log_id: log.id, label: chosenLabel, notes: notes || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed');
+      }
+      const data = await res.json();
+      setSaved(chosenLabel);
+      setGlowClass('animate-pulse-glow');
+      setTimeout(() => setGlowClass(''), 700);
+      if (onFeedbackSaved) onFeedbackSaved(log.id, chosenLabel, data.injected_to_baseline);
+    } catch (e) {
+      setError(e.message);
+      setLabel(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Already reviewed
+  if (saved) {
+    return (
+      <div className={`p-4 rounded-lg border space-y-2 ${
+        saved === 'correct'
+          ? 'bg-green-50/60 border-green-200'
+          : 'bg-amber-50/60 border-amber-200'
+      } ${glowClass}`}>
+        <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2 text-gray-500">
+          <MessageSquare size={14} /> Analyst Feedback
+        </h3>
+        <div className="flex items-center gap-2">
+          <AnimatedCheckmark />
+          <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+            saved === 'correct'
+              ? 'bg-green-100 text-green-700'
+              : 'bg-amber-100 text-amber-700'
+          }`}>
+            {saved === 'correct' ? 'Correct Detection' : 'False Positive'}
+          </span>
+          {saved === 'false_positive' && (
+            <span className="text-[10px] text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+              Features injected into baseline for retraining
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
+      <h3 className="text-xs font-bold text-blue-500 uppercase tracking-widest flex items-center gap-2">
+        <MessageSquare size={14} /> Analyst Feedback
+      </h3>
+      <p className="text-xs text-gray-500">
+        Was this AI detection correct? Your feedback helps the AI learn.
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => submit('correct')}
+          disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
+        >
+          <ThumbsUp size={16} />
+          Correct Detection
+        </button>
+        <button
+          onClick={() => submit('false_positive')}
+          disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
+        >
+          <ThumbsDown size={16} />
+          False Positive
+        </button>
+      </div>
+
+      {/* Optional notes */}
+      <button
+        onClick={() => setShowNotes(!showNotes)}
+        className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1"
+      >
+        {showNotes ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        Add notes (optional)
+      </button>
+      {showNotes && (
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Why do you think this is a false positive?"
+          className="w-full text-xs border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"
+          rows={2}
+        />
+      )}
+
+      {error && (
+        <div className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded border border-red-200">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Enhanced Inspector Drawer ---
-const InspectorDrawer = ({ log, onClose }) => {
+const InspectorDrawer = ({ log, onClose, onFeedbackSaved }) => {
   const [showRawJson, setShowRawJson] = useState(false);
   const ai = log.raw_log?.ai || {};
   const decision = log.raw_log?.decision || {};
@@ -193,6 +345,11 @@ const InspectorDrawer = ({ log, onClose }) => {
             )}
           </div>
 
+          {/* Analyst Feedback (only for AI-flagged events) */}
+          {(ai.flagged || ai.classification_blocked) && (
+            <FeedbackPanel log={log} onFeedbackSaved={onFeedbackSaved} />
+          )}
+
           {/* Raw JSON (Collapsible) */}
           <div>
             <button
@@ -231,6 +388,9 @@ const EventsLog = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const ITEMS_PER_PAGE = 20;
+
+  // Feedback status map: { log_id: 'correct' | 'false_positive' }
+  const [feedbackMap, setFeedbackMap] = useState({});
 
   const liveIntervalRef = useRef(null);
 
@@ -278,8 +438,29 @@ const EventsLog = () => {
 
       const data = await res.json();
 
-      setLogs(Array.isArray(data.logs) ? data.logs : []);
+      const fetchedLogs = Array.isArray(data.logs) ? data.logs : [];
+      setLogs(fetchedLogs);
       setTotalPages(data.pagination?.total_pages || 1);
+
+      // Batch-check feedback status for AI-flagged logs
+      const flaggedIds = fetchedLogs
+        .filter(l => l.raw_log?.ai?.flagged || l.raw_log?.ai?.classification_blocked)
+        .map(l => l.id)
+        .filter(Boolean);
+      if (flaggedIds.length > 0) {
+        try {
+          const fbRes = await fetch(`${API_BASE_URL}/feedback/batch`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ log_ids: flaggedIds }),
+          });
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            setFeedbackMap(prev => ({ ...prev, ...fbData }));
+          }
+        } catch {}
+      }
 
       if (isLive) setCurrentPage(1);
 
@@ -459,9 +640,18 @@ const EventsLog = () => {
                   </td>
 
                   <td className="px-6 py-3 text-center">
-                    <button onClick={() => setSelectedLog(log)} className="text-gray-400 hover:text-blue-600">
-                      <Eye size={18} />
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      {feedbackMap[log.id] && (
+                        <span title={feedbackMap[log.id] === 'correct' ? 'Verified Correct' : 'Marked False Positive'}>
+                          <CheckCircle size={14} className={
+                            feedbackMap[log.id] === 'correct' ? 'text-green-500' : 'text-amber-500'
+                          } />
+                        </span>
+                      )}
+                      <button onClick={() => setSelectedLog(log)} className="text-gray-400 hover:text-blue-600">
+                        <Eye size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -495,7 +685,13 @@ const EventsLog = () => {
 
       {/* INSPECTOR */}
       {selectedLog && (
-        <InspectorDrawer log={selectedLog} onClose={() => setSelectedLog(null)} />
+        <InspectorDrawer
+          log={selectedLog}
+          onClose={() => setSelectedLog(null)}
+          onFeedbackSaved={(logId, label) => {
+            setFeedbackMap(prev => ({ ...prev, [logId]: label }));
+          }}
+        />
       )}
     </div>
   );

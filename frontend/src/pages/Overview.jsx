@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Server,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import {
   BarChart,
@@ -35,14 +37,20 @@ export default function Overview() {
     baseline_count: 0,
     last_trained_at: null,
   });
+  const [feedbackStats, setFeedbackStats] = useState({
+    total: 0, correct_count: 0, false_positive_count: 0, precision_pct: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   // 1. Fetch Data
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/get-overview?range=24h");
-      const data = await response.json();
+      const [overviewRes, fbRes] = await Promise.all([
+        fetch("/api/get-overview?range=24h"),
+        fetch("/api/feedback/stats", { credentials: "include" }).catch(() => null),
+      ]);
+      const data = await overviewRes.json();
 
       // Use window_logs for analytics calculation
       const chartLogs = data.window_logs || [];
@@ -51,6 +59,11 @@ export default function Overview() {
       setLogs(sortedLogs);
       setIpCounts(data.ip_policy_counts || { whitelist: 0, blacklist: 0 });
       setAiStats(data.ai_training_stats || { baseline_count: 0, last_trained_at: null });
+
+      if (fbRes && fbRes.ok) {
+        const fbData = await fbRes.json();
+        setFeedbackStats(fbData);
+      }
     } catch (error) {
       console.error("Failed to load overview data:", error);
     } finally {
@@ -276,11 +289,31 @@ export default function Overview() {
           <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
             <BrainCircuit size={18} className="text-purple-500" /> Neuro-Engine
           </h3>
-          <div className="flex-1 flex flex-col justify-center gap-4">
+          <div className="flex-1 flex flex-col justify-center gap-3">
             <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
               <div className="text-xs text-purple-600 font-semibold mb-1 uppercase">Training Samples</div>
               <div className="text-3xl font-bold text-gray-800">{aiStats.baseline_count}</div>
             </div>
+
+            {/* Analyst Feedback Stats */}
+            {feedbackStats.total > 0 && (
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="text-xs text-blue-600 font-semibold mb-2 uppercase">AI Precision (Analyst Verified)</div>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-3xl font-bold text-gray-800">{feedbackStats.precision_pct}%</div>
+                  <div className="text-xs text-gray-500">{feedbackStats.total} reviews</div>
+                </div>
+                <div className="flex gap-3 mt-2">
+                  <span className="flex items-center gap-1 text-xs text-green-600">
+                    <ThumbsUp size={12} /> {feedbackStats.correct_count}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-amber-600">
+                    <ThumbsDown size={12} /> {feedbackStats.false_positive_count}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="px-4 py-3 bg-gray-50 rounded-lg border">
               <div className="text-xs text-gray-500 mb-1">Last Retrained</div>
               <div className="text-sm font-semibold text-gray-800">
