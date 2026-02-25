@@ -37,6 +37,10 @@ export default function Overview() {
     baseline_count: 0,
     last_trained_at: null,
   });
+  const [clsStats, setClsStats] = useState({
+    feedback_count: 0,
+    last_trained_at: null,
+  });
   const [feedbackStats, setFeedbackStats] = useState({
     total: 0, correct_count: 0, false_positive_count: 0, false_negative_count: 0, precision_pct: 0,
   });
@@ -59,6 +63,7 @@ export default function Overview() {
       setLogs(sortedLogs);
       setIpCounts(data.ip_policy_counts || { whitelist: 0, blacklist: 0 });
       setAiStats(data.ai_training_stats || { baseline_count: 0, last_trained_at: null });
+      setClsStats(data.cls_training_stats || { feedback_count: 0, last_trained_at: null });
 
       if (fbRes && fbRes.ok) {
         const fbData = await fbRes.json();
@@ -319,10 +324,21 @@ export default function Overview() {
               </div>
             )}
 
-            <div className="px-4 py-3 bg-gray-50 rounded-lg border">
-              <div className="text-xs text-gray-500 mb-1">Last Retrained</div>
-              <div className="text-sm font-semibold text-gray-800">
-                {aiStats.last_trained_at ? new Date(aiStats.last_trained_at).toLocaleString() : "Waiting for data..."}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="px-4 py-3 bg-gray-50 rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">Anomaly Retrained</div>
+                <div className="text-sm font-semibold text-gray-800">
+                  {aiStats.last_trained_at ? new Date(aiStats.last_trained_at).toLocaleString() : "Waiting..."}
+                </div>
+              </div>
+              <div className="px-4 py-3 bg-gray-50 rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">Classifier Retrained</div>
+                <div className="text-sm font-semibold text-gray-800">
+                  {clsStats.last_trained_at ? new Date(clsStats.last_trained_at).toLocaleString() : "Waiting..."}
+                </div>
+                {clsStats.feedback_count > 0 && (
+                  <div className="text-[10px] text-gray-400 mt-1">{clsStats.feedback_count} feedback samples</div>
+                )}
               </div>
             </div>
           </div>

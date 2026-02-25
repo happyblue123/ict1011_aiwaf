@@ -14,6 +14,11 @@ LOCK_FILE = BASE_DIR / "retrain.lock"
 
 THRESHOLD = 500  # set back to 1000 later
 
+# ── Classification retrain constants ─────────────────────────────
+CLS_STATE_FILE = BASE_DIR / "cls_retrain_state.json"
+CLS_LOCK_FILE  = BASE_DIR / "cls_retrain.lock"
+CLS_THRESHOLD  = 10  # human-verified labels are high quality; training is fast
+
 
 def _load_state() -> Dict[str, Any]:
     if not STATE_FILE.exists():
@@ -116,4 +121,106 @@ def trigger_retrain_async(app) -> None:
 
     print("[AI] starting retrain thread...", flush=True)
     t = threading.Thread(target=_train_worker, args=(app,), daemon=True)
+    t.start()
+
+
+# ══════════════════════════════════════════════════════════════════
+# Classification retrain pipeline (mirrors anomaly pipeline above)
+# ══════════════════════════════════════════════════════════════════
+
+def _load_cls_state() -> Dict[str, Any]:
+    if not CLS_STATE_FILE.exists():
+        return {"feedback_count": 0, "last_trained_count": 0, "last_trained_at": None}
+    try:
+        return json.loads(CLS_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"feedback_count": 0, "last_trained_count": 0, "last_trained_at": None}
+
+
+def _save_cls_state(state: Dict[str, Any]) -> None:
+    CLS_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CLS_STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp.replace(CLS_STATE_FILE)
+
+
+def increment_cls_feedback_counter(n: int = 1) -> int:
+    state = _load_cls_state()
+    state["feedback_count"] = int(state.get("feedback_count") or 0) + int(n)
+    _save_cls_state(state)
+    return int(state["feedback_count"])
+
+
+def _acquire_cls_lock() -> bool:
+    try:
+        CLS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(CLS_LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+        return True
+    except FileExistsError:
+        return False
+
+
+def _release_cls_lock() -> None:
+    try:
+        CLS_LOCK_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _mark_cls_trained() -> None:
+    state = _load_cls_state()
+    state["last_trained_count"] = int(state.get("feedback_count") or 0)
+    state["last_trained_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    _save_cls_state(state)
+
+
+def _reload_cls_model(app) -> None:
+    from app.waf.ai_model import AIRequestClassifier
+
+    classifier = AIRequestClassifier()
+    classifier.load()
+    app.state.classification_ai = classifier
+
+
+def _cls_train_worker(app) -> None:
+    print("[AI-CLS] Classification retrain worker started", flush=True)
+
+    if not _acquire_cls_lock():
+        print("[AI-CLS] Retrain worker exit: lock already held", flush=True)
+        return
+
+    try:
+        print("[AI-CLS] Lock acquired, training begins...", flush=True)
+
+        from app.services.train_classification_ai import train_classification_model
+        train_classification_model()
+
+        print("[AI-CLS] Training finished, marking + reloading model", flush=True)
+        _mark_cls_trained()
+        _reload_cls_model(app)
+
+        print("[AI-CLS] Classification retrain worker done", flush=True)
+
+    except Exception as e:
+        print("[AI-CLS] Classification retrain worker error:", repr(e), flush=True)
+    finally:
+        _release_cls_lock()
+
+
+def trigger_cls_retrain_async(app) -> None:
+    state = _load_cls_state()
+    fc = int(state.get("feedback_count") or 0)
+    lt = int(state.get("last_trained_count") or 0)
+    diff = fc - lt
+
+    if diff < CLS_THRESHOLD:
+        return
+
+    if CLS_LOCK_FILE.exists():
+        print("[AI-CLS] not retraining: lock exists", flush=True)
+        return
+
+    print("[AI-CLS] starting classification retrain thread...", flush=True)
+    t = threading.Thread(target=_cls_train_worker, args=(app,), daemon=True)
     t.start()

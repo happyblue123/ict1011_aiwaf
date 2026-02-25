@@ -32,3 +32,4 @@ react
 axios
 tailwindcss
 requests
+flask

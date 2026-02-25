@@ -2,6 +2,7 @@ import json
 import joblib
 import random
 import os
+import string
 import nltk
 from nltk.corpus import words, brown
 from sklearn.model_selection import train_test_split
@@ -101,6 +102,112 @@ def train_classification_model():
         X.append(request_to_text("GET", f"{k}={v}", ""))
         y.append(0)
 
+    # --- PILLAR 5: ANALYST FEEDBACK ---
+    feedback_file = os.path.join("app", "ai_models", "data", "classification_feedback.jsonl")
+    if os.path.exists(feedback_file):
+        feedback_count = 0
+        with open(feedback_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                    text = row.get("text", "")
+                    label = int(row.get("label", 0))
+                    if not text:
+                        continue
+                    # Amplify 10x — human-verified labels are authoritative
+                    for _ in range(10):
+                        X.append(text)
+                        y.append(label)
+                    feedback_count += 1
+                except Exception:
+                    continue
+        if feedback_count:
+            print(f"[*] Loaded {feedback_count} analyst feedback samples (amplified 10x)")
+
+    # --- PILLAR 6: USER INPUT NOISE (GIBBERISH / RANDOM TYPING) ---
+    # Real users type gibberish, typos, keyboard smash, and random strings
+    # in search bars and form fields — these are BENIGN, not attacks.
+    NUM_GIBBERISH = max(3000, len(attacks))
+    print(f"[*] Generating {NUM_GIBBERISH} gibberish/random-input benign samples...")
+
+    # Character pools for different gibberish styles
+    LOWER = string.ascii_lowercase
+    UPPER = string.ascii_uppercase
+    DIGITS = string.digits
+    MIXED = LOWER + UPPER + DIGITS
+    KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+    COMMON_FORM_KEYS = ["q", "search", "name", "username", "email", "comment",
+                        "message", "input", "query", "text", "value", "field"]
+
+    def _random_gibberish():
+        """Generate one random gibberish string mimicking real user input."""
+        style = random.choice([
+            "keyboard_smash", "random_alpha", "repeated_chars",
+            "mixed_alphanum", "short_random", "long_random",
+            "partial_words", "typo_strings",
+        ])
+
+        if style == "keyboard_smash":
+            # User mashing nearby keys: "asdfasdf", "jkljkl", "qweqwe"
+            row = random.choice(KEYBOARD_ROWS)
+            length = random.randint(3, 20)
+            return "".join(random.choice(row) for _ in range(length))
+
+        elif style == "random_alpha":
+            # Pure random letters: "xkjqmz", "bvntrl"
+            length = random.randint(2, 25)
+            return "".join(random.choice(LOWER) for _ in range(length))
+
+        elif style == "repeated_chars":
+            # "aaaaaa", "xxxxxx", "abcabcabc"
+            if random.random() > 0.5:
+                char = random.choice(LOWER)
+                return char * random.randint(3, 15)
+            else:
+                chunk = "".join(random.choice(LOWER) for _ in range(random.randint(2, 4)))
+                return chunk * random.randint(2, 5)
+
+        elif style == "mixed_alphanum":
+            # "abc123xyz", "test99xx"
+            length = random.randint(4, 20)
+            return "".join(random.choice(MIXED) for _ in range(length))
+
+        elif style == "short_random":
+            # Very short: "xx", "ab", "q1"
+            length = random.randint(1, 4)
+            return "".join(random.choice(MIXED) for _ in range(length))
+
+        elif style == "long_random":
+            # Longer gibberish: simulates pasting random text
+            length = random.randint(20, 60)
+            return "".join(random.choice(MIXED + "   ") for _ in range(length)).strip()
+
+        elif style == "partial_words":
+            # Truncated / half-typed words: "hel", "tes", "admi"
+            w = random.choice(word_list)
+            cut = random.randint(2, max(3, len(w) - 1))
+            return w[:cut].lower()
+
+        else:  # typo_strings
+            # Real word with random chars inserted: "heXllo", "te2st"
+            w = random.choice(word_list).lower()
+            if len(w) < 3:
+                return w
+            pos = random.randint(1, len(w) - 1)
+            insert = random.choice(MIXED)
+            return w[:pos] + insert + w[pos:]
+
+    for _ in range(NUM_GIBBERISH):
+        gibberish = _random_gibberish()
+        key = random.choice(COMMON_FORM_KEYS)
+        method = random.choice(["GET", "POST"])
+
+        if method == "GET":
+            X.append(request_to_text("GET", f"{key}={gibberish}", ""))
+        else:
+            X.append(request_to_text("POST", "", f"{key}={gibberish}"))
+        y.append(0)  # benign
+
     # --- THE HIGH-SENSITIVITY PIPELINE ---
     model = Pipeline([
         ("tfidf", TfidfVectorizer(
@@ -111,7 +218,7 @@ def train_classification_model():
             min_df=1 
         )),
         ("clf", LogisticRegression(
-            class_weight={0: 1, 1: 15}, # Slightly lowered from 20 to prevent over-sensitivity
+            class_weight={0: 1, 1: 8}, # Lowered from 15 to reduce false positives on gibberish/random input
             max_iter=5000,
             C=10.0 # High C for sharp decision boundaries
         ))

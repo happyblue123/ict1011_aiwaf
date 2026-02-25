@@ -49,6 +49,7 @@ from app.db.db_bootstrap import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 AI_STATE_FILE = Path("app/ai_models/retrain_state.json")
+CLS_STATE_FILE = Path("app/ai_models/cls_retrain_state.json")
 
 def _require_user(request: Request) -> dict:
     """Return authenticated user dict or raise 401."""
@@ -291,9 +292,25 @@ def overview(
         except Exception as e:
             logger.error(f"Error reading AI state file: {e}")
 
+    # Load classification retrain stats
+    cls_stats = {
+        "feedback_count": 0,
+        "last_trained_count": 0,
+        "last_trained_at": None
+    }
+
+    if CLS_STATE_FILE.exists():
+        try:
+            content = CLS_STATE_FILE.read_text(encoding="utf-8")
+            if content.strip():
+                cls_stats = json.loads(content)
+        except Exception as e:
+            logger.error(f"Error reading CLS state file: {e}")
+
     # Inject into response
     if isinstance(data, dict):
         data["ai_training_stats"] = ai_stats
+        data["cls_training_stats"] = cls_stats
 
     return data
 
