@@ -125,6 +125,7 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
 
             results["classification_score"] = cls_result["malicious_score"]
             results["classification_blocked"] = cls_result["is_blocked"]
+            results["classification_text"] = request_text
 
             if cls_result["is_blocked"]:
                 decision.action = Action.BLOCK
@@ -146,9 +147,8 @@ async def _process_ai_analysis(request: Request, req_norm: NormalizedRequest, de
         except Exception as e:
             print(f"[AI] Baseline update failed: {e}")
 
-    # 4. Store features for analyst feedback (only for flagged/blocked requests)
-    if results["flagged"] or results["classification_blocked"] or decision.action == Action.BLOCK:
-        results["features"] = features
+    # 4. Store features for analyst feedback (all AI-evaluated requests)
+    results["features"] = features
 
     return results
 

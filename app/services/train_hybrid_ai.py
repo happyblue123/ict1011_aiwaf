@@ -21,6 +21,9 @@ def load_rows():
     with DATA.open("r", encoding="utf-8") as f:
         for line in f:
             obj = json.loads(line)
+            # Only train on baseline data; exclude analyst-marked attack rows
+            if obj.get("label", "baseline") == "attack":
+                continue
             rows.append(obj["features"])
     return rows
 

@@ -148,29 +148,38 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
     }
   };
 
+  // Determine context: is this a flagged/blocked event or an allowed event?
+  const ai = log.raw_log?.ai || {};
+  const isFlaggedOrBlocked = ai.flagged || ai.classification_blocked || log.action_taken !== 'ALLOWED';
+
+  // Saved label display config
+  const savedLabels = {
+    correct: { text: 'Correct Detection', bg: 'bg-green-50/60 border-green-200', badge: 'bg-green-100 text-green-700' },
+    false_positive: { text: 'False Positive', bg: 'bg-amber-50/60 border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+    false_negative: { text: 'Missed Attack', bg: 'bg-red-50/60 border-red-200', badge: 'bg-red-100 text-red-700' },
+  };
+
   // Already reviewed
   if (saved) {
+    const cfg = savedLabels[saved] || savedLabels.correct;
     return (
-      <div className={`p-4 rounded-lg border space-y-2 ${
-        saved === 'correct'
-          ? 'bg-green-50/60 border-green-200'
-          : 'bg-amber-50/60 border-amber-200'
-      } ${glowClass}`}>
+      <div className={`p-4 rounded-lg border space-y-2 ${cfg.bg} ${glowClass}`}>
         <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2 text-gray-500">
           <MessageSquare size={14} /> Analyst Feedback
         </h3>
         <div className="flex items-center gap-2">
           <AnimatedCheckmark />
-          <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-            saved === 'correct'
-              ? 'bg-green-100 text-green-700'
-              : 'bg-amber-100 text-amber-700'
-          }`}>
-            {saved === 'correct' ? 'Correct Detection' : 'False Positive'}
+          <span className={`px-3 py-1 text-xs font-bold rounded-full ${cfg.badge}`}>
+            {cfg.text}
           </span>
           {saved === 'false_positive' && (
             <span className="text-[10px] text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
               Features injected into baseline for retraining
+            </span>
+          )}
+          {saved === 'false_negative' && (
+            <span className="text-[10px] text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+              Features marked as attack for retraining
             </span>
           )}
         </div>
@@ -184,25 +193,40 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
         <MessageSquare size={14} /> Analyst Feedback
       </h3>
       <p className="text-xs text-gray-500">
-        Was this AI detection correct? Your feedback helps the AI learn.
+        {isFlaggedOrBlocked
+          ? 'Was this AI detection correct? Your feedback helps the AI learn.'
+          : 'Did the AI miss an attack? Mark this request if it should have been blocked.'}
       </p>
       <div className="flex gap-2">
-        <button
-          onClick={() => submit('correct')}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
-        >
-          <ThumbsUp size={16} />
-          Correct Detection
-        </button>
-        <button
-          onClick={() => submit('false_positive')}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
-        >
-          <ThumbsDown size={16} />
-          False Positive
-        </button>
+        {isFlaggedOrBlocked ? (
+          <>
+            <button
+              onClick={() => submit('correct')}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
+            >
+              <ThumbsUp size={16} />
+              Correct Detection
+            </button>
+            <button
+              onClick={() => submit('false_positive')}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
+            >
+              <ThumbsDown size={16} />
+              False Positive
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => submit('false_negative')}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
+          >
+            <ShieldAlert size={16} />
+            Missed Attack
+          </button>
+        )}
       </div>
 
       {/* Optional notes */}
@@ -217,7 +241,7 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Why do you think this is a false positive?"
+          placeholder={isFlaggedOrBlocked ? "Why do you think this is a false positive?" : "What attack type did the AI miss?"}
           className="w-full text-xs border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"
           rows={2}
         />
@@ -345,8 +369,8 @@ const InspectorDrawer = ({ log, onClose, onFeedbackSaved }) => {
             )}
           </div>
 
-          {/* Analyst Feedback (only for AI-flagged events) */}
-          {(ai.flagged || ai.classification_blocked) && (
+          {/* Analyst Feedback (for AI-flagged events AND allowed events with AI features) */}
+          {(ai.flagged || ai.classification_blocked || ai.features) && (
             <FeedbackPanel log={log} onFeedbackSaved={onFeedbackSaved} />
           )}
 
@@ -442,9 +466,9 @@ const EventsLog = () => {
       setLogs(fetchedLogs);
       setTotalPages(data.pagination?.total_pages || 1);
 
-      // Batch-check feedback status for AI-flagged logs
+      // Batch-check feedback status for AI-evaluated logs (flagged, blocked, or has features)
       const flaggedIds = fetchedLogs
-        .filter(l => l.raw_log?.ai?.flagged || l.raw_log?.ai?.classification_blocked)
+        .filter(l => l.raw_log?.ai?.flagged || l.raw_log?.ai?.classification_blocked || l.raw_log?.ai?.features)
         .map(l => l.id)
         .filter(Boolean);
       if (flaggedIds.length > 0) {
@@ -642,9 +666,15 @@ const EventsLog = () => {
                   <td className="px-6 py-3 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       {feedbackMap[log.id] && (
-                        <span title={feedbackMap[log.id] === 'correct' ? 'Verified Correct' : 'Marked False Positive'}>
+                        <span title={
+                          feedbackMap[log.id] === 'correct' ? 'Verified Correct'
+                            : feedbackMap[log.id] === 'false_negative' ? 'Marked Missed Attack'
+                            : 'Marked False Positive'
+                        }>
                           <CheckCircle size={14} className={
-                            feedbackMap[log.id] === 'correct' ? 'text-green-500' : 'text-amber-500'
+                            feedbackMap[log.id] === 'correct' ? 'text-green-500'
+                              : feedbackMap[log.id] === 'false_negative' ? 'text-red-500'
+                              : 'text-amber-500'
                           } />
                         </span>
                       )}

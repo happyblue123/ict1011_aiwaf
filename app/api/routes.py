@@ -347,7 +347,7 @@ def update_settings(payload: SettingsUpdate, request: Request):
 # ── Analyst Feedback (Human-in-the-Loop AI Learning) ──────
 class FeedbackCreate(BaseModel):
     log_id: int
-    label: Literal["correct", "false_positive"]
+    label: Literal["correct", "false_positive", "false_negative"]
     notes: Optional[str] = None
 
 

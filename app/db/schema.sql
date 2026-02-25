@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS analyst_feedback (
     feedback_id  INT AUTO_INCREMENT PRIMARY KEY,
     log_id       INT NOT NULL,
     user_id      INT NOT NULL,
-    label        ENUM('correct','false_positive') NOT NULL,
+    label        ENUM('correct','false_positive','false_negative') NOT NULL,
     notes        TEXT NULL,
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

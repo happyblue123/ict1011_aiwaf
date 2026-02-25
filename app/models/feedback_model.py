@@ -39,7 +39,8 @@ class FeedbackModel:
             SELECT
                 COUNT(*)                                          AS total,
                 SUM(label = 'correct')                            AS correct_count,
-                SUM(label = 'false_positive')                     AS false_positive_count
+                SUM(label = 'false_positive')                     AS false_positive_count,
+                SUM(label = 'false_negative')                     AS false_negative_count
             FROM analyst_feedback
         """
         conn = get_conn()
@@ -53,12 +54,14 @@ class FeedbackModel:
         total = int(row["total"] or 0)
         correct = int(row["correct_count"] or 0)
         fp = int(row["false_positive_count"] or 0)
+        fn = int(row["false_negative_count"] or 0)
         precision = round(correct / total * 100, 1) if total > 0 else 0.0
 
         return {
             "total": total,
             "correct_count": correct,
             "false_positive_count": fp,
+            "false_negative_count": fn,
             "precision_pct": precision,
         }
 

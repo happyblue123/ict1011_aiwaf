@@ -38,7 +38,7 @@ export default function Overview() {
     last_trained_at: null,
   });
   const [feedbackStats, setFeedbackStats] = useState({
-    total: 0, correct_count: 0, false_positive_count: 0, precision_pct: 0,
+    total: 0, correct_count: 0, false_positive_count: 0, false_negative_count: 0, precision_pct: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -310,6 +310,11 @@ export default function Overview() {
                   <span className="flex items-center gap-1 text-xs text-amber-600">
                     <ThumbsDown size={12} /> {feedbackStats.false_positive_count}
                   </span>
+                  {feedbackStats.false_negative_count > 0 && (
+                    <span className="flex items-center gap-1 text-xs text-red-600">
+                      <ShieldAlert size={12} /> {feedbackStats.false_negative_count}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
