@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap,
-  BrainCircuit, Shield, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle
+  BrainCircuit, Shield, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle,
+  Download, FileText, Filter // <-- Added Export Icons
 } from 'lucide-react';
+import jsPDF from 'jspdf'; // <-- Added PDF library
+import autoTable from 'jspdf-autotable'; // <-- Added Table library
 
 const API_BASE_URL = "/api";
 
@@ -416,6 +419,11 @@ const EventsLog = () => {
   // Feedback status map: { log_id: 'correct' | 'false_positive' }
   const [feedbackMap, setFeedbackMap] = useState({});
 
+  // --- NEW: Export Modal States ---
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportAttackFilter, setExportAttackFilter] = useState('ALL');
+  const [isExporting, setIsExporting] = useState(false);
+
   const liveIntervalRef = useRef(null);
 
   const onTimePresetChange = (e) => {
@@ -497,6 +505,96 @@ const EventsLog = () => {
     }
   };
 
+  // --- NEW: REPORT EXPORT LOGIC (PDF ONLY) ---
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const queryParams = { limit: 10000, page: 1, time_mode: timeMode };
+      if (timeMode === "preset" && timePreset !== "live") queryParams.time_preset = timePreset;
+      if (timeMode === 'after' || timeMode === 'between') queryParams.start_date = startDate;
+      if (timeMode === 'before' || timeMode === 'between') queryParams.end_date = endDate;
+
+      const res = await fetch(`${API_BASE_URL}/logs?${new URLSearchParams(queryParams).toString()}`, { credentials: "include" });
+      const data = await res.json();
+      let exportData = Array.isArray(data.logs) ? data.logs : [];
+
+      // Apply the Filter properly
+      if (exportAttackFilter !== 'ALL') {
+        exportData = exportData.filter(log => {
+          if (exportAttackFilter === 'baseline_allow') {
+             return log.attack_type === 'baseline_allow' || log.attack_type === 'None';
+          }
+          return log.attack_type === exportAttackFilter;
+        });
+      }
+
+      const totalEvents = exportData.length;
+      const totalBlocked = exportData.filter(l => l.action_taken === 'BLOCKED').length;
+      const totalAnomalies = exportData.filter(l => l.raw_log?.ai?.flagged).length;
+      const attackCounts = exportData.reduce((acc, log) => {
+        const type = log.attack_type || 'Unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {});
+
+      // Generate PDF
+      const doc = new jsPDF('landscape');
+      const timestamp = new Date().toLocaleString();
+
+      doc.setFontSize(18); doc.setTextColor(30, 58, 138); doc.text("Neuro-WAF Security Report", 14, 22);
+      doc.setFontSize(10); doc.setTextColor(100);
+      doc.text(`Generated: ${timestamp}`, 14, 30);
+      doc.text(`Filter Applied: ${exportAttackFilter === 'ALL' ? 'All Traffic' : exportAttackFilter}`, 14, 35);
+
+      doc.setFontSize(12); doc.setTextColor(0); doc.text("Executive Summary", 14, 45);
+      doc.setFontSize(10);
+      doc.text(`Total Events: ${totalEvents}`, 14, 52);
+      doc.text(`Blocked Threats: ${totalBlocked}`, 14, 58);
+      doc.text(`AI Anomalies Detected: ${totalAnomalies}`, 14, 64);
+
+      doc.text("Attack Breakdown:", 100, 45);
+      let yOffset = 52;
+      Object.entries(attackCounts).forEach(([type, count]) => {
+        doc.text(`- ${type}: ${count}`, 100, yOffset);
+        yOffset += 6;
+      });
+
+      const tableColumns = ["Time", "Source IP", "Path", "Attack Type", "AI Score", "Classification", "Action"];
+      const tableRows = exportData.map(log => {
+        const ai = log.raw_log?.ai || {};
+        const eventTime = log.timestamp || log.raw_log?.timestamp;
+        return [
+          eventTime ? new Date(eventTime).toLocaleString() : "—",
+          log.source_ip,
+          log.request_path?.length > 40 ? log.request_path.substring(0, 37) + '...' : (log.request_path || "—"),
+          log.attack_type,
+          ai.score ? ai.score.toFixed(3) : '-',
+          ai.classification_score ? (ai.classification_blocked ? 'MALICIOUS' : 'BENIGN') : '-',
+          log.action_taken
+        ];
+      });
+
+      autoTable(doc, {
+        startY: Math.max(75, yOffset + 10),
+        head: [tableColumns],
+        body: tableRows,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 58, 138] },
+        styles: { fontSize: 8, cellPadding: 2 },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+      });
+
+      doc.save(`NeuroWAF_Report_${new Date().getTime()}.pdf`);
+      setIsExportModalOpen(false);
+      
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Failed to generate report. Check console for details.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   useEffect(() => { setCurrentPage(1); }, [timeMode, timePreset, startDate, endDate]);
 
   useEffect(() => {
@@ -570,9 +668,15 @@ const EventsLog = () => {
             </div>
           )}
 
-          <button onClick={() => fetchLogs()} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">
-            <RefreshCw size={18} className={timePreset === 'live' ? "animate-spin" : ""} />
-          </button>
+          {/* --- NEW: Wrapped refresh and export inside a container --- */}
+          <div className="flex gap-2 border-l pl-3 ml-1">
+            <button onClick={() => fetchLogs()} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="Refresh">
+              <RefreshCw size={18} className={timePreset === 'live' ? "animate-spin" : ""} />
+            </button>
+            <button onClick={() => setIsExportModalOpen(true)} className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm">
+              <Download size={16} /> Export Report
+            </button>
+          </div>
         </div>
       </div>
 
@@ -712,6 +816,51 @@ const EventsLog = () => {
           </div>
         </div>
       </div>
+
+      {/* --- NEW: EXPORT MODAL --- */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
+            <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
+              <h2 className="font-bold flex items-center gap-2"><FileText size={18}/> Generate Security Report</h2>
+              <button onClick={() => setIsExportModalOpen(false)} className="text-gray-400 hover:text-white"><X size={18}/></button>
+            </div>
+            
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-gray-600">
+                This will generate a comprehensive PDF document based on your current active time filters.
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Filter size={14}/> Filter by Attack Type</label>
+                <select 
+                  value={exportAttackFilter} 
+                  onChange={(e) => setExportAttackFilter(e.target.value)}
+                  className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="ALL">All Traffic (Comprehensive)</option>
+                  <option value="baseline_allow">Benign / Normal Traffic Only</option>
+                  <option disabled>──────────</option>
+                  <option value="sqli">SQL Injection</option>
+                  <option value="xss">Cross-Site Scripting (XSS)</option>
+                  <option value="traversal">Path Traversal</option>
+                  <option value="AI_CLASSIFICATION">AI Classified Attacks</option>
+                  <option value="rate_limit">DDoS / Rate Limit Spikes</option>
+                </select>
+              </div>
+
+              <button 
+                onClick={handleExport}
+                disabled={isExporting}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {isExporting ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
+                {isExporting ? 'Generating Report...' : 'Download PDF Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* INSPECTOR */}
       {selectedLog && (
