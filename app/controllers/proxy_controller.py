@@ -3,8 +3,7 @@ import uuid
 import httpx
 from urllib.parse import unquote_plus, parse_qs
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse # Import this!
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse
 
 from app.waf.engine import WAFEngine
 from app.waf.decisions import Action
@@ -12,6 +11,7 @@ from app.proxy.normalization import NormalizedRequest, safe_unquote, normalize_p
 from app.waf.ai_features import extract_features
 from app.waf.ai_dataset import append_request_row as append_baseline
 from app.ai_models.retrain_manager import increment_baseline_counter, trigger_retrain_async
+from app.waf.custom_pages_cache import custom_pages
 
 router = APIRouter()
 waf = WAFEngine()
@@ -280,22 +280,18 @@ async def handle_all(request: Request, path: str):
     # 5. Action Execution
     if effective_action == Action.BLOCK:
         _log_waf_event(request, req_norm, decision, ai_results, request_id, start, waf_mode, protected_target)
-    
-    # Use the function we just defined
-    settings = get_waf_settings_from_db()
-    
-    # Check if Custom Pages are enabled and have content
-    if settings.get("error_enabled") and settings.get("error_html"):
-        return HTMLResponse(
-            content=settings["error_html"], 
-            status_code=decision.status_code or 403
-        )
-    
-    # Fallback if custom pages are disabled
-    return HTMLResponse(
-        content="<h1>403 Forbidden</h1><p>Blocked by Neuro-WAF AI</p>", 
-        status_code=403
-    )
+        status = decision.status_code or 403
+
+        # Serve custom bot challenge page for bot-triggered blocks
+        is_bot_block = any(r.startswith("bot:") for r in (decision.reasons or []))
+        if is_bot_block and custom_pages.bot_enabled and custom_pages.bot_html:
+            return HTMLResponse(custom_pages.bot_html, status_code=status)
+
+        # Serve custom error page for all other blocks
+        if custom_pages.error_enabled and custom_pages.error_html:
+            return HTMLResponse(custom_pages.error_html, status_code=status)
+
+        return PlainTextResponse("Blocked by WAF", status_code=status)
 
     if effective_action == Action.RATE_LIMIT:
         _log_waf_event(request, req_norm, decision, ai_results, request_id, start, waf_mode, protected_target)

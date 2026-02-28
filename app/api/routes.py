@@ -344,6 +344,7 @@ class SettingsUpdate(BaseModel):
     profile: Optional[Dict[str, Any]] = None
     waf: Optional[Dict[str, Any]] = None
     toggles: Optional[Dict[str, Any]] = None
+    custom_pages: Optional[Dict[str, Any]] = None
  
  
 @router.get("/settings")

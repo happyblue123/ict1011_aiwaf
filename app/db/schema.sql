@@ -86,9 +86,13 @@ CREATE TABLE IF NOT EXISTS waf_settings (
     id INT PRIMARY KEY,
     geo_blocking BOOLEAN DEFAULT TRUE,
     rate_limiting BOOLEAN DEFAULT TRUE,
+    error_enabled BOOLEAN DEFAULT FALSE,
+    error_html TEXT DEFAULT NULL,
+    bot_enabled BOOLEAN DEFAULT FALSE,
+    bot_html TEXT DEFAULT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
- 
+
 INSERT INTO waf_settings (id, geo_blocking, rate_limiting)
 VALUES (1, TRUE, TRUE)
 ON DUPLICATE KEY UPDATE id = id;

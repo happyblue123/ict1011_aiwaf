@@ -51,6 +51,12 @@ class SettingsController:
                     "geo_blocking": bool(toggles["geo_blocking"]) if toggles else True,
                     "rate_limiting": bool(toggles["rate_limiting"]) if toggles else True,
                 },
+                "custom_pages": {
+                    "error_enabled": bool(toggles["error_enabled"]) if toggles else False,
+                    "error_html": (toggles["error_html"] or "") if toggles else "",
+                    "bot_enabled": bool(toggles["bot_enabled"]) if toggles else False,
+                    "bot_html": (toggles["bot_html"] or "") if toggles else "",
+                },
             }
         finally:
             conn.close()
@@ -103,6 +109,26 @@ class SettingsController:
                         (
                             bool(toggles.get("geo_blocking", True)),
                             bool(toggles.get("rate_limiting", True)),
+                        ),
+                    )
+
+                # ── Custom response pages update ─────────
+                custom_pages = data.get("custom_pages")
+                if custom_pages:
+                    cur.execute(
+                        """
+                        UPDATE waf_settings
+                        SET error_enabled = %s,
+                            error_html    = %s,
+                            bot_enabled   = %s,
+                            bot_html      = %s
+                        WHERE id = 1
+                        """,
+                        (
+                            bool(custom_pages.get("error_enabled", False)),
+                            custom_pages.get("error_html", "") or "",
+                            bool(custom_pages.get("bot_enabled", False)),
+                            custom_pages.get("bot_html", "") or "",
                         ),
                     )
  
