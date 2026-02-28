@@ -3,6 +3,7 @@ import uuid
 import httpx
 from urllib.parse import unquote_plus, parse_qs
 from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import HTMLResponse # Import this!
 from fastapi.responses import PlainTextResponse
 
 from app.waf.engine import WAFEngine
@@ -16,6 +17,18 @@ router = APIRouter()
 waf = WAFEngine()
 AI_LOG_THRESHOLD = 0.7
 AI_CLASSIFICATION_THRESHOLD  = 0.95
+from app.db.db_config import get_conn
+
+def get_waf_settings_from_db():
+    conn = get_conn()
+    try:
+        with conn.cursor() as cursor:
+            # Fetch the latest configuration row
+            cursor.execute("SELECT * FROM waf_settings LIMIT 1")
+            result = cursor.fetchone()
+            return result if result else {}
+    finally:
+        conn.close()
 
 def _get_waf_mode(request: Request) -> str:
     """
@@ -267,7 +280,22 @@ async def handle_all(request: Request, path: str):
     # 5. Action Execution
     if effective_action == Action.BLOCK:
         _log_waf_event(request, req_norm, decision, ai_results, request_id, start, waf_mode, protected_target)
-        return PlainTextResponse("Blocked by WAF", status_code=decision.status_code or 403)
+    
+    # Use the function we just defined
+    settings = get_waf_settings_from_db()
+    
+    # Check if Custom Pages are enabled and have content
+    if settings.get("error_enabled") and settings.get("error_html"):
+        return HTMLResponse(
+            content=settings["error_html"], 
+            status_code=decision.status_code or 403
+        )
+    
+    # Fallback if custom pages are disabled
+    return HTMLResponse(
+        content="<h1>403 Forbidden</h1><p>Blocked by Neuro-WAF AI</p>", 
+        status_code=403
+    )
 
     if effective_action == Action.RATE_LIMIT:
         _log_waf_event(request, req_norm, decision, ai_results, request_id, start, waf_mode, protected_target)
