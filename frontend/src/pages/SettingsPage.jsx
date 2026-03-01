@@ -1,7 +1,7 @@
 // src/pages/SettingsPage.jsx
 import React, { useState, useEffect } from 'react';
 import {
-  User, Shield, Key, Globe, Save, Loader2, CheckCircle2, FileCode, Layout
+  User, Shield, Key, Globe, Save, Loader2, CheckCircle2, FileCode, Layout, Mail, Send, Clock, Download
 } from 'lucide-react';
 
 const Toggle = ({ enabled, setEnabled }) => (
@@ -44,6 +44,16 @@ const SettingsPage = () => {
   const [customBotEnabled, setCustomBotEnabled] = useState(false);
   const [botHtml, setBotHtml] = useState('<h1>Verifying...</h1><p>Please wait while we check your connection.</p>');
 
+  // ── Auto Report State ───────────────────────────────
+  const [reportEnabled, setReportEnabled] = useState(false);
+  const [reportEmail, setReportEmail] = useState('');
+  const [reportFrequency, setReportFrequency] = useState('daily');
+  const [reportSmtpUser, setReportSmtpUser] = useState('');
+  const [reportSmtpPassword, setReportSmtpPassword] = useState('');
+  const [reportLastSent, setReportLastSent] = useState(null);
+  const [sendingReport, setSendingReport] = useState(false);
+  const [reportMessage, setReportMessage] = useState('');
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -67,6 +77,20 @@ const SettingsPage = () => {
         setErrorHtml(data.custom_pages?.error_html || '');
         setCustomBotEnabled(data.custom_pages?.bot_enabled ?? false);
         setBotHtml(data.custom_pages?.bot_html || '');
+
+        // Load Report Settings (separate endpoint)
+        try {
+          const reportRes = await fetch('/api/report-settings', { credentials: 'include' });
+          if (reportRes.ok) {
+            const rd = await reportRes.json();
+            setReportEnabled(rd.enabled ?? false);
+            setReportEmail(rd.recipient_email || '');
+            setReportFrequency(rd.frequency || 'daily');
+            setReportSmtpUser(rd.smtp_user || '');
+            setReportSmtpPassword(rd.smtp_password || '');
+            setReportLastSent(rd.last_sent_at || null);
+          }
+        } catch (e) { /* report settings optional */ }
 
       } catch (err) {
         setErrorMessage('Could not load settings. Database connection error?');
@@ -103,6 +127,22 @@ const SettingsPage = () => {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error('Save failed');
+
+      // Save report settings (separate endpoint)
+      const reportRes = await fetch('/api/report-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          enabled: reportEnabled,
+          recipient_email: reportEmail,
+          frequency: reportFrequency,
+          smtp_user: reportSmtpUser,
+          smtp_password: reportSmtpPassword,
+        }),
+      });
+      if (!reportRes.ok) throw new Error('Failed to save report settings');
+
       setNewPassword('');
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -110,6 +150,47 @@ const SettingsPage = () => {
       setErrorMessage(err.message || 'Failed to save settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePreviewPdf = async () => {
+    try {
+      const res = await fetch('/api/report-settings/preview', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to generate preview');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'NeuroWAF_Report_Preview.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setReportMessage('Failed to generate preview PDF');
+      setTimeout(() => setReportMessage(''), 5000);
+    }
+  };
+
+  const handleSendNow = async () => {
+    setSendingReport(true);
+    setReportMessage('');
+    try {
+      const res = await fetch('/api/report-settings/send', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setReportMessage('Report sent successfully!');
+        setReportLastSent(new Date().toISOString());
+      } else {
+        setReportMessage(data.message || 'Failed to send report');
+      }
+      setTimeout(() => setReportMessage(''), 5000);
+    } catch (err) {
+      setReportMessage('Failed to send report');
+      setTimeout(() => setReportMessage(''), 5000);
+    } finally {
+      setSendingReport(false);
     }
   };
 
@@ -291,6 +372,128 @@ const SettingsPage = () => {
                   />
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* ── AUTO REPORT SECTION ────────────────────────────── */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <SectionHeader
+              icon={Mail}
+              title="Auto Reports"
+              description="Schedule automated PDF security reports sent to your email."
+            />
+
+            <div className="space-y-5">
+              {/* Enable Toggle */}
+              <div className="flex justify-between items-center p-4 border border-gray-100 rounded-lg bg-gray-50/50">
+                <div>
+                  <h4 className="font-bold text-sm text-gray-800">Enable Auto Reports</h4>
+                  <p className="text-xs text-gray-500 mt-1">Automatically generate and email PDF reports on a schedule.</p>
+                </div>
+                <Toggle enabled={reportEnabled} setEnabled={setReportEnabled} />
+              </div>
+
+              {reportEnabled && (
+                <div className="space-y-4 p-4 border border-blue-100 rounded-lg bg-blue-50/30">
+                  {/* SMTP Credentials */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Sender Gmail</label>
+                      <input
+                        type="email"
+                        value={reportSmtpUser}
+                        onChange={(e) => setReportSmtpUser(e.target.value)}
+                        placeholder="neurowaf.reports@gmail.com"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">App Password</label>
+                      <input
+                        type="password"
+                        value={reportSmtpPassword}
+                        onChange={(e) => setReportSmtpPassword(e.target.value)}
+                        placeholder="Gmail App Password"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Recipient */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Recipient Email</label>
+                    <input
+                      type="email"
+                      value={reportEmail}
+                      onChange={(e) => setReportEmail(e.target.value)}
+                      placeholder="analyst@company.com"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Frequency */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Frequency</label>
+                    <div className="flex gap-3">
+                      {['daily', 'weekly', 'monthly'].map((freq) => (
+                        <label
+                          key={freq}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+                            reportFrequency === freq
+                              ? 'border-blue-400 bg-blue-50 text-blue-700 font-bold'
+                              : 'border-gray-200 hover:border-blue-200 text-gray-600'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="reportFreq"
+                            value={freq}
+                            checked={reportFrequency === freq}
+                            onChange={() => setReportFrequency(freq)}
+                            className="accent-blue-600"
+                          />
+                          <span className="capitalize">{freq}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Send Now + Preview + Status */}
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <div className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock size={12} />
+                      {reportLastSent
+                        ? `Last sent: ${new Date(reportLastSent).toLocaleString()}`
+                        : 'No reports sent yet'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handlePreviewPdf}
+                        className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors border border-gray-300"
+                      >
+                        <Download size={14} />
+                        Preview PDF
+                      </button>
+                      <button
+                        onClick={handleSendNow}
+                        disabled={sendingReport || !reportSmtpUser || !reportSmtpPassword || !reportEmail}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {sendingReport ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                        {sendingReport ? 'Sending...' : 'Send Now'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {reportMessage && (
+                    <div className={`text-sm font-medium p-2 rounded-lg ${
+                      reportMessage.includes('success') ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
+                    }`}>
+                      {reportMessage}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -22,6 +22,9 @@ numpy               # Required dependency for AI models
 joblib
 nltk
 
+# --- PDF Report Generation ---
+fpdf2               # Lightweight PDF generation for auto-reports
+
 # --- Web Scraping & Utilities ---
 scrapy
 beautifulsoup4

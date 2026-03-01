@@ -65,6 +65,10 @@ async def on_startup():
     # Start proxy service
     await proxy_service.startup()
 
+    # Start auto-report scheduler
+    from app.services.report_scheduler import start_scheduler
+    start_scheduler()
+
 
 @app.on_event("shutdown")
 async def on_shutdown():

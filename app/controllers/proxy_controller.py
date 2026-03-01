@@ -4,7 +4,6 @@ import httpx
 from urllib.parse import unquote_plus, parse_qs
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import PlainTextResponse, HTMLResponse
-
 from app.waf.engine import WAFEngine
 from app.waf.decisions import Action
 from app.proxy.normalization import NormalizedRequest, safe_unquote, normalize_path, normalize_body_text

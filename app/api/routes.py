@@ -37,6 +37,7 @@ from app.services.traffic_analysis_service import TrafficAnalysisService
 from app.controllers.ddos_controller import DdosController
 from app.controllers.overview_controller import OverviewController
 from app.controllers.feedback_controller import FeedbackController
+from app.controllers.report_controller import ReportController
 
 from app.db.db_bootstrap import (
     ensure_database_and_schema,
@@ -407,3 +408,48 @@ def get_feedback(log_id: int, request: Request):
 def batch_feedback_status(payload: FeedbackBatchRequest, request: Request):
     _require_user(request)
     return FeedbackController.batch_status(payload.log_ids)
+
+
+# ── Auto Report Settings ──────────────────────────────────
+class ReportSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    recipient_email: Optional[str] = None
+    frequency: Optional[str] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+
+
+@router.get("/report-settings")
+def get_report_settings(request: Request):
+    _require_user(request)
+    return ReportController.get_settings()
+
+
+@router.put("/report-settings")
+def update_report_settings(payload: ReportSettingsUpdate, request: Request):
+    _require_user(request)
+    return ReportController.update_settings(payload.model_dump(exclude_none=True))
+
+
+@router.post("/report-settings/send")
+def send_report_now(request: Request):
+    _require_user(request)
+    return ReportController.send_now()
+
+
+@router.get("/report-settings/preview")
+def preview_report_pdf(request: Request):
+    """Download a preview PDF without sending email."""
+    _require_user(request)
+    try:
+        from app.services.report_service import generate_report_pdf
+        pdf_bytes = bytes(generate_report_pdf(period="24h"))
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=NeuroWAF_Report_Preview.pdf"},
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

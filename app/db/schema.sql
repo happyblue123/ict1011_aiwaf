@@ -118,7 +118,25 @@ CREATE TABLE IF NOT EXISTS sessions (
 ) ENGINE=InnoDB;
 
 -- ==========================================
--- 9. ANALYST FEEDBACK TABLE
+-- 9. REPORT SETTINGS TABLE (auto email reports)
+-- Single-row table (id=1) like waf_settings.
+-- ==========================================
+CREATE TABLE IF NOT EXISTS report_settings (
+    id INT PRIMARY KEY,
+    enabled BOOLEAN DEFAULT FALSE,
+    recipient_email VARCHAR(255) DEFAULT '',
+    frequency ENUM('daily','weekly','monthly') DEFAULT 'daily',
+    smtp_user VARCHAR(255) DEFAULT '',
+    smtp_password VARCHAR(255) DEFAULT '',
+    last_sent_at TIMESTAMP NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+INSERT INTO report_settings (id) VALUES (1)
+ON DUPLICATE KEY UPDATE id = id;
+
+-- ==========================================
+-- 10. ANALYST FEEDBACK TABLE
 -- Human-in-the-loop learning: analysts mark
 -- AI detections as correct or false positive.
 -- ==========================================
