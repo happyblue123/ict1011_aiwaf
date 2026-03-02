@@ -34,7 +34,9 @@ const SettingsPage = () => {
   // ... (Existing state: Profile, WAF, Toggles)
   const [username, setUsername] = useState('');
   const [role, setRole] = useState('analyst');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [wafMode, setWafMode] = useState('protect');
   const [geoBlocking, setGeoBlocking] = useState(true);
 
@@ -48,11 +50,16 @@ const SettingsPage = () => {
   const [reportEnabled, setReportEnabled] = useState(false);
   const [reportEmail, setReportEmail] = useState('');
   const [reportFrequency, setReportFrequency] = useState('daily');
-  const [reportSmtpUser, setReportSmtpUser] = useState('');
-  const [reportSmtpPassword, setReportSmtpPassword] = useState('');
+  const [reportTime, setReportTime] = useState('00:00');
+  const [reportDow, setReportDow] = useState(null);      // 0=Mon..6=Sun
+  const [reportDom, setReportDom] = useState(null);      // 1..31
+  // defaults pulled at build time from VITE_ environment variables (set in .env)
+  const [reportSmtpUser, setReportSmtpUser] = useState(import.meta.env.VITE_SMTP_SENDER_GMAIL || '');
+  const [reportSmtpPassword, setReportSmtpPassword] = useState(import.meta.env.VITE_SMTP_APP_PASSWORD || '');
   const [reportLastSent, setReportLastSent] = useState(null);
   const [sendingReport, setSendingReport] = useState(false);
   const [reportMessage, setReportMessage] = useState('');
+  const [reportSettingsSaved, setReportSettingsSaved] = useState(true);  // Track if report settings have unsaved changes
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -86,8 +93,12 @@ const SettingsPage = () => {
             setReportEnabled(rd.enabled ?? false);
             setReportEmail(rd.recipient_email || '');
             setReportFrequency(rd.frequency || 'daily');
-            setReportSmtpUser(rd.smtp_user || '');
-            setReportSmtpPassword(rd.smtp_password || '');
+            setReportTime(rd.schedule_time || '00:00');
+            setReportDow(rd.schedule_dow);
+            setReportDom(rd.schedule_dom);
+            // if backend returns empty values, keep build-time defaults from env vars
+            setReportSmtpUser(rd.smtp_user || import.meta.env.VITE_SMTP_SENDER_GMAIL || '');
+            setReportSmtpPassword(rd.smtp_password || import.meta.env.VITE_SMTP_APP_PASSWORD || '');
             setReportLastSent(rd.last_sent_at || null);
           }
         } catch (e) { /* report settings optional */ }
@@ -107,7 +118,13 @@ const SettingsPage = () => {
     setErrorMessage('');
 
     const body = {
-      profile: newPassword ? { new_password: newPassword } : undefined,
+      profile: newPassword
+        ? {
+            current_password: currentPassword,
+            new_password: newPassword,
+            confirm_password: confirmPassword,
+          }
+        : undefined,
       waf: { waf_mode: wafMode },
       toggles: { geo_blocking: geoBlocking },
       // Send Custom Pages to API
@@ -120,6 +137,23 @@ const SettingsPage = () => {
     };
 
     try {
+      // validate password change
+      if (newPassword) {
+        if (!currentPassword) throw new Error('Please enter your current password');
+        if (newPassword !== confirmPassword) throw new Error('New passwords do not match');
+      }
+
+      // validate report schedule before hitting backend
+      if (reportEnabled) {
+        if (!reportEmail) throw new Error('Recipient email is required');
+        if (reportFrequency === 'weekly' && (reportDow === null || reportDow === undefined)) {
+          throw new Error('Please select a day of week for weekly reports');
+        }
+        if (reportFrequency === 'monthly' && (reportDom === null || reportDom === undefined)) {
+          throw new Error('Please select a day of month for monthly reports');
+        }
+      }
+
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -137,13 +171,17 @@ const SettingsPage = () => {
           enabled: reportEnabled,
           recipient_email: reportEmail,
           frequency: reportFrequency,
-          smtp_user: reportSmtpUser,
-          smtp_password: reportSmtpPassword,
+          schedule_time: reportTime,
+          schedule_dow: reportDow,
+          schedule_dom: reportDom,
         }),
       });
       if (!reportRes.ok) throw new Error('Failed to save report settings');
 
       setNewPassword('');
+      setCurrentPassword('');
+      setConfirmPassword('');
+      setReportSettingsSaved(true);  // Mark report settings as saved
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
@@ -252,12 +290,32 @@ const SettingsPage = () => {
                         />
                       </div>
                       <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Current Password</label>
+                        <input
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="Enter current password"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-xs font-bold text-gray-700 uppercase mb-1">New Password</label>
                         <input
                           type="password"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="Leave blank to keep current"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Confirm Password</label>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Repeat new password"
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
@@ -390,42 +448,35 @@ const SettingsPage = () => {
                   <h4 className="font-bold text-sm text-gray-800">Enable Auto Reports</h4>
                   <p className="text-xs text-gray-500 mt-1">Automatically generate and email PDF reports on a schedule.</p>
                 </div>
-                <Toggle enabled={reportEnabled} setEnabled={setReportEnabled} />
+                <button
+                  onClick={() => {
+                    setReportEnabled(!reportEnabled);
+                    setReportSettingsSaved(false);
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    reportEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      reportEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
 
               {reportEnabled && (
                 <div className="space-y-4 p-4 border border-blue-100 rounded-lg bg-blue-50/30">
-                  {/* SMTP Credentials */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Sender Gmail</label>
-                      <input
-                        type="email"
-                        value={reportSmtpUser}
-                        onChange={(e) => setReportSmtpUser(e.target.value)}
-                        placeholder="neurowaf.reports@gmail.com"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">App Password</label>
-                      <input
-                        type="password"
-                        value={reportSmtpPassword}
-                        onChange={(e) => setReportSmtpPassword(e.target.value)}
-                        placeholder="Gmail App Password"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
                   {/* Recipient */}
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Recipient Email</label>
                     <input
                       type="email"
                       value={reportEmail}
-                      onChange={(e) => setReportEmail(e.target.value)}
+                      onChange={(e) => {
+                        setReportEmail(e.target.value);
+                        setReportSettingsSaved(false);
+                      }}
                       placeholder="analyst@company.com"
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -449,7 +500,10 @@ const SettingsPage = () => {
                             name="reportFreq"
                             value={freq}
                             checked={reportFrequency === freq}
-                            onChange={() => setReportFrequency(freq)}
+                            onChange={() => {
+                              setReportFrequency(freq);
+                              setReportSettingsSaved(false);
+                            }}
                             className="accent-blue-600"
                           />
                           <span className="capitalize">{freq}</span>
@@ -457,6 +511,57 @@ const SettingsPage = () => {
                       ))}
                     </div>
                   </div>
+
+                  {/* Schedule details */}
+                  <div className="mt-4">
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Time of day</label>
+                    <input
+                      type="time"
+                      value={reportTime}
+                      onChange={(e) => {
+                        setReportTime(e.target.value);
+                        setReportSettingsSaved(false);
+                      }}
+                      className="w-32 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {reportFrequency === 'weekly' && (
+                    <div className="mt-4">
+                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Day of week</label>
+                      <select
+                        value={reportDow ?? ''}
+                        onChange={(e) => {
+                          setReportDow(e.target.value === '' ? null : parseInt(e.target.value, 10));
+                          setReportSettingsSaved(false);
+                        }}
+                        className="w-full max-w-xs border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select</option>
+                        {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d,i)=>(
+                          <option key={i} value={i}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {reportFrequency === 'monthly' && (
+                    <div className="mt-4">
+                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Day of month</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={reportDom ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value ? parseInt(e.target.value, 10) : null;
+                          setReportDom(v);
+                          setReportSettingsSaved(false);
+                        }}
+                        className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
 
                   {/* Send Now + Preview + Status */}
                   <div className="flex items-center justify-between pt-2 border-t border-gray-200">
@@ -476,8 +581,9 @@ const SettingsPage = () => {
                       </button>
                       <button
                         onClick={handleSendNow}
-                        disabled={sendingReport || !reportSmtpUser || !reportSmtpPassword || !reportEmail}
+                        disabled={sendingReport || !reportEmail || !reportSettingsSaved}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={!reportSettingsSaved ? "Please save settings first" : ""}
                       >
                         {sendingReport ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                         {sendingReport ? 'Sending...' : 'Send Now'}
@@ -490,6 +596,12 @@ const SettingsPage = () => {
                       reportMessage.includes('success') ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
                     }`}>
                       {reportMessage}
+                    </div>
+                  )}
+
+                  {!reportSettingsSaved && (
+                    <div className="text-sm font-medium p-2 rounded-lg text-yellow-600 bg-yellow-50 border border-yellow-200">
+                      ⚠️ Changes not saved. Click "Save Changes" to enable Send Now.
                     </div>
                   )}
                 </div>

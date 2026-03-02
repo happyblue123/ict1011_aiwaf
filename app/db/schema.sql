@@ -126,6 +126,9 @@ CREATE TABLE IF NOT EXISTS report_settings (
     enabled BOOLEAN DEFAULT FALSE,
     recipient_email VARCHAR(255) DEFAULT '',
     frequency ENUM('daily','weekly','monthly') DEFAULT 'daily',
+    schedule_time TIME DEFAULT '00:00',          -- time of day to send
+    schedule_dow TINYINT NULL,                   -- 0=Mon..6=Sun for weekly
+    schedule_dom TINYINT NULL,                   -- 1-31 for monthly
     smtp_user VARCHAR(255) DEFAULT '',
     smtp_password VARCHAR(255) DEFAULT '',
     last_sent_at TIMESTAMP NULL,
@@ -134,6 +137,12 @@ CREATE TABLE IF NOT EXISTS report_settings (
 
 INSERT INTO report_settings (id) VALUES (1)
 ON DUPLICATE KEY UPDATE id = id;
+
+-- make sure any older databases get our new scheduling columns
+ALTER TABLE report_settings
+    ADD COLUMN IF NOT EXISTS schedule_time TIME DEFAULT '00:00',
+    ADD COLUMN IF NOT EXISTS schedule_dow TINYINT NULL,
+    ADD COLUMN IF NOT EXISTS schedule_dom TINYINT NULL;
 
 -- ==========================================
 -- 10. ANALYST FEEDBACK TABLE

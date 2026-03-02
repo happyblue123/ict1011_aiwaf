@@ -1,6 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file at startup so os.getenv() works for SMTP credentials
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from app.controllers.proxy_controller import router as proxy_router
 from app.api.routes import router  # dashboard API routes

@@ -72,6 +72,17 @@ class SettingsController:
                 if profile:
                     new_password = profile.get("new_password")
                     if new_password:
+                        current_pw = profile.get("current_password", "")
+                        confirm_pw = profile.get("confirm_password", "")
+                        if not current_pw or not confirm_pw:
+                            raise HTTPException(status_code=400, detail="Current and confirm password required")
+                        if new_password != confirm_pw:
+                            raise HTTPException(status_code=400, detail="New passwords do not match")
+                        # verify current password against DB
+                        cur.execute("SELECT password_hash FROM users WHERE user_id = %s LIMIT 1", (user_id,))
+                        row = cur.fetchone()
+                        if not row or not bcrypt.checkpw(current_pw.encode("utf-8"), row["password_hash"].encode("utf-8")):
+                            raise HTTPException(status_code=400, detail="Current password incorrect")
                         pw_hash = bcrypt.hashpw(
                             new_password.encode("utf-8"),
                             bcrypt.gensalt(),
