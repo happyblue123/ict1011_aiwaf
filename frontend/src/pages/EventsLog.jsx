@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap,
   BrainCircuit, Shield, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle,
-  Download, FileText, Filter, Mail, Loader2 // <-- Added Export Icons
+  Download, FileText, Filter, Mail, Loader2, ExternalLink, Search
 } from 'lucide-react';
-import jsPDF from 'jspdf'; // <-- Added PDF library
-import autoTable from 'jspdf-autotable'; // <-- Added Table library
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_BASE_URL = "/api";
 
@@ -108,7 +108,6 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
   const [error, setError] = useState(null);
   const [glowClass, setGlowClass] = useState('');
 
-  // Check for existing feedback on mount
   useEffect(() => {
     (async () => {
       try {
@@ -151,18 +150,15 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
     }
   };
 
-  // Determine context: is this a flagged/blocked event or an allowed event?
   const ai = log.raw_log?.ai || {};
   const isFlaggedOrBlocked = ai.flagged || ai.classification_blocked || log.action_taken !== 'ALLOWED';
 
-  // Saved label display config
   const savedLabels = {
     correct: { text: 'Correct Detection', bg: 'bg-green-50/60 border-green-200', badge: 'bg-green-100 text-green-700' },
     false_positive: { text: 'False Positive', bg: 'bg-amber-50/60 border-amber-200', badge: 'bg-amber-100 text-amber-700' },
     false_negative: { text: 'Missed Attack', bg: 'bg-red-50/60 border-red-200', badge: 'bg-red-100 text-red-700' },
   };
 
-  // Already reviewed
   if (saved) {
     const cfg = savedLabels[saved] || savedLabels.correct;
     return (
@@ -175,16 +171,6 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
           <span className={`px-3 py-1 text-xs font-bold rounded-full ${cfg.badge}`}>
             {cfg.text}
           </span>
-          {saved === 'false_positive' && (
-            <span className="text-[10px] text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-              Features injected into baseline for retraining
-            </span>
-          )}
-          {saved === 'false_negative' && (
-            <span className="text-[10px] text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-              Features marked as attack for retraining
-            </span>
-          )}
         </div>
       </div>
     );
@@ -195,66 +181,22 @@ const FeedbackPanel = ({ log, onFeedbackSaved }) => {
       <h3 className="text-xs font-bold text-blue-500 uppercase tracking-widest flex items-center gap-2">
         <MessageSquare size={14} /> Analyst Feedback
       </h3>
-      <p className="text-xs text-gray-500">
-        {isFlaggedOrBlocked
-          ? 'Was this AI detection correct? Your feedback helps the AI learn.'
-          : 'Did the AI miss an attack? Mark this request if it should have been blocked.'}
-      </p>
       <div className="flex gap-2">
         {isFlaggedOrBlocked ? (
           <>
-            <button
-              onClick={() => submit('correct')}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
-            >
-              <ThumbsUp size={16} />
-              Correct Detection
+            <button onClick={() => submit('correct')} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50">
+              <ThumbsUp size={16} /> Correct Detection
             </button>
-            <button
-              onClick={() => submit('false_positive')}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
-            >
-              <ThumbsDown size={16} />
-              False Positive
+            <button onClick={() => submit('false_positive')} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50">
+              <ThumbsDown size={16} /> False Positive
             </button>
           </>
         ) : (
-          <button
-            onClick={() => submit('false_negative')}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50"
-          >
-            <ShieldAlert size={16} />
-            Missed Attack
+          <button onClick={() => submit('false_negative')} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50">
+            <ShieldAlert size={16} /> Missed Attack
           </button>
         )}
       </div>
-
-      {/* Optional notes */}
-      <button
-        onClick={() => setShowNotes(!showNotes)}
-        className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1"
-      >
-        {showNotes ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        Add notes (optional)
-      </button>
-      {showNotes && (
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder={isFlaggedOrBlocked ? "Why do you think this is a false positive?" : "What attack type did the AI miss?"}
-          className="w-full text-xs border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"
-          rows={2}
-        />
-      )}
-
-      {error && (
-        <div className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded border border-red-200">
-          {error}
-        </div>
-      )}
     </div>
   );
 };
@@ -272,122 +214,51 @@ const InspectorDrawer = ({ log, onClose, onFeedbackSaved }) => {
       <div className="bg-white w-full max-w-xl h-full shadow-2xl p-6 flex flex-col animate-slide-in-right overflow-hidden">
         <div className="flex justify-between items-center mb-6 pb-4 border-b">
           <h2 className="text-xl font-bold text-gray-800">Event Details #{log.id}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
-            <X size={20} />
-          </button>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
         </div>
 
         <div className="space-y-5 flex-1 overflow-y-auto">
-          {/* Request Summary */}
           <div className="p-4 bg-gray-50 rounded-lg font-mono text-sm space-y-2 border">
-            <p><span className="font-bold text-gray-400">Time:</span> {log.timestamp}</p>
-            <p><span className="font-bold text-gray-400">Source:</span> {log.source_ip} ({log.geo_location})</p>
+            <p><span className="font-bold text-gray-400">Time:</span> {log.timestamp || log.raw_log?.timestamp || "—"}</p>
+            <p className="flex items-center gap-1.5">
+              <span className="font-bold text-gray-400">Source:</span> 
+              {log.source_ip === '127.0.0.1' ? (
+                <span>localhost</span>
+              ) : (
+                <a href={`https://www.virustotal.com/gui/search/${log.source_ip}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 transition-colors" title="Analyze IP on VirusTotal">
+                  {log.source_ip} <ExternalLink size={12} className="opacity-70" />
+                </a>
+              )}
+              <span className="text-gray-500">({log.geo_location})</span>
+            </p>
             <p><span className="font-bold text-gray-400">Dest:</span> {log.destination_ip}</p>
             <p><span className="font-bold text-gray-400">Method:</span> {log.http_method}</p>
-            <p><span className="font-bold text-gray-400">Path:</span><br/><span className="text-blue-600">{log.request_path}</span></p>
-            <p><span className="font-bold text-gray-400">Params:</span> {log.request_params}</p>
+            <p><span className="font-bold text-gray-400">Path:</span><br/><span className="text-blue-600 truncate block">{log.request_path}</span></p>
           </div>
 
-          {/* WAF Decision */}
-          <div className="p-4 bg-gray-50 rounded-lg border space-y-3">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Shield size={14} /> WAF Decision
-            </h3>
-            <div className="flex items-center gap-3">
-              <span className={`px-3 py-1 text-xs font-bold rounded-full border ${
-                ACTION_CLASS[log.action_taken] || ACTION_CLASS.ALLOWED
-              }`}>
-                {log.action_taken}
-              </span>
-              <span className="text-xs text-gray-500">
-                Triggered by: <span className="font-semibold text-gray-700">{wafLayer}</span>
-              </span>
-            </div>
-            {decision.reasons && decision.reasons.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {decision.reasons.map((r, i) => (
-                  <span key={i} className="px-2 py-0.5 text-[10px] font-mono bg-gray-200 text-gray-700 rounded">
-                    {r}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* AI Analysis */}
           <div className="p-4 bg-purple-50/50 rounded-lg border border-purple-100 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-purple-500 uppercase tracking-widest flex items-center gap-2">
                 <BrainCircuit size={14} /> AI Analysis
               </h3>
-              <span className={`px-3 py-1 text-[11px] font-bold rounded-full ${verdict.color}`}>
-                {verdict.label}
-              </span>
+              <span className={`px-3 py-1 text-[11px] font-bold rounded-full ${verdict.color}`}>{verdict.label}</span>
             </div>
-
-            {/* Combined Anomaly Score */}
-            <ScoreGauge
-              label="Combined Anomaly Score"
-              score={ai.score}
-              threshold={0.70}
-              thresholdLabel="Block at 0.70"
-            />
-
-            {/* Ensemble Breakdown */}
-            {(ai.if_score != null || ai.ae_score != null) && (
-              <div className="pl-3 border-l-2 border-purple-200 space-y-3">
-                <div className="text-[10px] font-bold text-purple-400 uppercase">Ensemble Breakdown</div>
-                <ScoreGauge
-                  label="Isolation Forest"
-                  score={ai.if_score}
-                  threshold={null}
-                />
-                <ScoreGauge
-                  label="Autoencoder"
-                  score={ai.ae_score}
-                  threshold={null}
-                />
-                {ai.ae_mse != null && (
-                  <div className="text-[10px] text-gray-400">
-                    Autoencoder MSE: <span className="font-mono font-bold">{ai.ae_mse.toFixed(6)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Classification Score */}
+            <ScoreGauge label="Combined Anomaly Score" score={ai.score} threshold={0.70} thresholdLabel="Block at 0.70" />
             {ai.classification_score != null && (
-              <ScoreGauge
-                label="Classification (Malicious Probability)"
-                score={ai.classification_score}
-                threshold={0.95}
-                thresholdLabel="Block at 0.95"
-              />
-            )}
-
-            {ai.model_ready === false && (
-              <div className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded border border-amber-200">
-                AI model is not yet trained. Send more traffic to build a baseline.
-              </div>
+              <ScoreGauge label="Classification (Malicious Probability)" score={ai.classification_score} threshold={0.95} thresholdLabel="Block at 0.95" />
             )}
           </div>
 
-          {/* Analyst Feedback (for AI-flagged events AND allowed events with AI features) */}
           {(ai.flagged || ai.classification_blocked || ai.features) && (
             <FeedbackPanel log={log} onFeedbackSaved={onFeedbackSaved} />
           )}
 
-          {/* Raw JSON (Collapsible) */}
           <div>
-            <button
-              onClick={() => setShowRawJson(!showRawJson)}
-              className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-gray-600"
-            >
-              {showRawJson ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              Raw Payload
+            <button onClick={() => setShowRawJson(!showRawJson)} className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-gray-600">
+              {showRawJson ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Raw Payload
             </button>
             {showRawJson && (
-              <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto max-h-[400px] mt-2">
+              <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto max-h-[400px] mt-2 whitespace-pre-wrap break-all">
                 {JSON.stringify(log.raw_log, null, 2)}
               </pre>
             )}
@@ -416,10 +287,36 @@ const EventsLog = () => {
   const [totalPages, setTotalPages] = useState(1);
   const ITEMS_PER_PAGE = 20;
 
-  // Feedback status map: { log_id: 'correct' | 'false_positive' }
   const [feedbackMap, setFeedbackMap] = useState({});
 
-  // Search and Filter States
+  // --- NEW: DYNAMIC FILTER OPTIONS ---
+  // --- DYNAMIC FILTER OPTIONS WITH SAFE FALLBACKS ---
+  const [dynamicFilters, setDynamicFilters] = useState({
+    attacks: ['None', 'sql_injection', 'xss', 'traversal', 'cmd_injection', 'generic_injection', 'geo_block', 'AI_ANOMALY', 'rate_limit'],
+    actions: ['BLOCKED', 'ALLOWED', 'FLAGGED'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    countries: ['Local', 'United States', 'Russia', 'China', 'Iran']
+  });
+
+  // Load Dynamic DB Options on Mount
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/logs/filters`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.attacks) {
+            setDynamicFilters(data); // Overwrites fallbacks with real DB values
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch dynamic DB filters", err);
+      }
+    };
+    fetchOptions();
+  }, []);
+
+  // SEARCH & FILTER STATES
   const [searchQuery, setSearchQuery] = useState('');
   const [attackTypeFilter, setAttackTypeFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
@@ -427,6 +324,10 @@ const EventsLog = () => {
   const [methodFilter, setMethodFilter] = useState('all');
   const [ipFilter, setIpFilter] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+
+  // DEBOUNCE STATES
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [debouncedIp, setDebouncedIp] = useState('');
 
   // Export Modal States
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -437,13 +338,36 @@ const EventsLog = () => {
 
   const liveIntervalRef = useRef(null);
 
+  // Load Dynamic DB Options on Mount
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/logs/filters`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setDynamicFilters(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch dynamic DB filters", err);
+      }
+    };
+    fetchOptions();
+  }, []);
+
+  // Debounce Text Input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setDebouncedIp(ipFilter);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery, ipFilter]);
+
   const onTimePresetChange = (e) => {
     const v = e.target.value;
     setTimePreset(v);
-
     if (v === "live") {
-      const nowIso = new Date().toISOString();
-      setLiveStartTime(nowIso);
+      setLiveStartTime(new Date().toISOString());
       setLogs([]);
       setCurrentPage(1);
     } else {
@@ -451,25 +375,17 @@ const EventsLog = () => {
     }
   };
 
-  // reload data when search/filters update
+  // Trigger Backend Fetch
   useEffect(() => {
     fetchLogs();
-  }, [searchQuery, attackTypeFilter, actionFilter, countryFilter, methodFilter, ipFilter]);
-
-  // NOTE: the previous version had two identical effects; the second one was redundant and has been removed.
-
+  }, [debouncedSearch, debouncedIp, attackTypeFilter, actionFilter, countryFilter, methodFilter, currentPage, timeMode, timePreset, startDate, endDate]);
 
   const fetchLogs = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true);
 
     try {
       const isLive = (timeMode === "preset" && timePreset === "live");
-
-      const queryParams = {
-        limit: ITEMS_PER_PAGE,
-        page: isLive ? 1 : currentPage,
-        time_mode: timeMode,
-      };
+      const queryParams = { limit: ITEMS_PER_PAGE, page: isLive ? 1 : currentPage, time_mode: timeMode };
 
       if (isLive) {
         if (!liveStartTime) return;
@@ -478,61 +394,37 @@ const EventsLog = () => {
       } else if (timeMode === "preset") {
         queryParams.time_preset = timePreset;
       }
-
       if (timeMode === 'after' || timeMode === 'between') queryParams.start_date = startDate;
       if (timeMode === 'before' || timeMode === 'between') queryParams.end_date = endDate;
 
-      // apply search/filter parameters
-      if (searchQuery.trim()) queryParams.search = searchQuery;
+      // Apply Filters directly to Backend
+      if (debouncedSearch.trim()) queryParams.search = debouncedSearch;
       if (attackTypeFilter !== 'all') queryParams.attack_type_filter = attackTypeFilter;
       if (actionFilter !== 'all') queryParams.action_filter = actionFilter;
       if (countryFilter !== 'all') queryParams.country_filter = countryFilter;
       if (methodFilter !== 'all') queryParams.method_filter = methodFilter;
-      if (ipFilter.trim()) queryParams.ip_filter = ipFilter;
+      if (debouncedIp.trim()) queryParams.ip_filter = debouncedIp;
 
       const query = new URLSearchParams(queryParams).toString();
       const res = await fetch(`${API_BASE_URL}/logs?${query}`, { credentials: "include" });
 
       if (!res.ok) throw new Error(`Server Error: ${res.status}`);
-
       const data = await res.json();
 
       const fetchedLogs = Array.isArray(data.logs) ? data.logs : [];
       setLogs(fetchedLogs);
       setTotalPages(data.pagination?.total_pages || 1);
 
-      // Batch-check feedback status for AI-evaluated logs (flagged, blocked, or has features)
-      const flaggedIds = fetchedLogs
-        .filter(l => l.raw_log?.ai?.flagged || l.raw_log?.ai?.classification_blocked || l.raw_log?.ai?.features)
-        .map(l => l.id)
-        .filter(Boolean);
-      if (flaggedIds.length > 0) {
-        try {
-          const fbRes = await fetch(`${API_BASE_URL}/feedback/batch`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ log_ids: flaggedIds }),
-          });
-          if (fbRes.ok) {
-            const fbData = await fbRes.json();
-            setFeedbackMap(prev => ({ ...prev, ...fbData }));
-          }
-        } catch {}
-      }
-
       if (isLive) setCurrentPage(1);
-
     } catch (err) {
       console.error("Failed to load logs:", err);
-      setLogs([]);
-      setTotalPages(1);
+      setLogs([]); setTotalPages(1);
     } finally {
       if (!isBackgroundRefresh) setLoading(false);
     }
   };
 
-  // --- NEW: REPORT EXPORT LOGIC (PDF ONLY) ---
+  // --- REPORT EXPORT LOGIC WITH GRAPHS ---
   const handleExport = async () => {
     setIsExporting(true);
     try {
@@ -541,49 +433,20 @@ const EventsLog = () => {
       if (timeMode === 'after' || timeMode === 'between') queryParams.start_date = startDate;
       if (timeMode === 'before' || timeMode === 'between') queryParams.end_date = endDate;
 
-      // include filters used in the UI so export matches what the user sees
-      if (searchQuery.trim()) queryParams.search = searchQuery;
+      if (debouncedSearch.trim()) queryParams.search = debouncedSearch;
       if (attackTypeFilter !== 'all') queryParams.attack_type_filter = attackTypeFilter;
       if (actionFilter !== 'all') queryParams.action_filter = actionFilter;
       if (countryFilter !== 'all') queryParams.country_filter = countryFilter;
       if (methodFilter !== 'all') queryParams.method_filter = methodFilter;
-      if (ipFilter.trim()) queryParams.ip_filter = ipFilter;
+      if (debouncedIp.trim()) queryParams.ip_filter = debouncedIp;
 
       const res = await fetch(`${API_BASE_URL}/logs?${new URLSearchParams(queryParams).toString()}`, { credentials: "include" });
       const data = await res.json();
       let exportData = Array.isArray(data.logs) ? data.logs : [];
 
-      // Also apply the same UI filters (searchQuery, attackTypeFilter, etc) so exported rows match visible table
-      if (searchQuery.trim()) {
-        const sq = searchQuery.toLowerCase();
-        exportData = exportData.filter(l =>
-          l.request_path?.toLowerCase().includes(sq) ||
-          l.source_ip?.includes(sq) ||
-          l.attack_type?.toLowerCase().includes(sq)
-        );
-      }
-      if (attackTypeFilter !== 'all') {
-        exportData = exportData.filter(l => l.attack_type === attackTypeFilter);
-      }
-      if (actionFilter !== 'all') {
-        exportData = exportData.filter(l => l.action_taken === actionFilter);
-      }
-      if (countryFilter !== 'all') {
-        exportData = exportData.filter(l => l.geo_location === countryFilter);
-      }
-      if (methodFilter !== 'all') {
-        exportData = exportData.filter(l => l.http_method === methodFilter);
-      }
-      if (ipFilter.trim()) {
-        exportData = exportData.filter(l => l.source_ip === ipFilter);
-      }
-
-      // Apply the Attack-type-only export filter as before
       if (exportAttackFilter !== 'ALL') {
         exportData = exportData.filter(log => {
-          if (exportAttackFilter === 'baseline_allow') {
-             return log.attack_type === 'baseline_allow' || log.attack_type === 'None';
-          }
+          if (exportAttackFilter === 'baseline_allow') return log.attack_type === 'baseline_allow' || log.attack_type === 'None';
           return log.attack_type === exportAttackFilter;
         });
       }
@@ -591,13 +454,28 @@ const EventsLog = () => {
       const totalEvents = exportData.length;
       const totalBlocked = exportData.filter(l => l.action_taken === 'BLOCKED').length;
       const totalAnomalies = exportData.filter(l => l.raw_log?.ai?.flagged).length;
-      const attackCounts = exportData.reduce((acc, log) => {
-        const type = log.attack_type || 'Unknown';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {});
+      
+      const attackCounts = {};
+      const actionCounts = {};
+      const geoCounts = {};
+      const methodCounts = {};
+      const pathCounts = {};
 
-      // Generate PDF
+      const stripEmojis = (str) => str.replace(/[^\w\s\/-]/g, '').trim();
+
+      exportData.forEach(log => {
+        const attack = log.attack_type || 'Unknown';
+        attackCounts[attack] = (attackCounts[attack] || 0) + 1;
+        const action = log.action_taken || 'UNKNOWN';
+        actionCounts[action] = (actionCounts[action] || 0) + 1;
+        const geo = stripEmojis(log.geo_location || 'Unknown');
+        geoCounts[geo] = (geoCounts[geo] || 0) + 1;
+        const method = log.http_method || 'UNKNOWN';
+        methodCounts[method] = (methodCounts[method] || 0) + 1;
+        const path = log.request_path || '/';
+        pathCounts[path] = (pathCounts[path] || 0) + 1;
+      });
+
       const doc = new jsPDF('landscape');
       const timestamp = new Date().toLocaleString();
 
@@ -608,16 +486,9 @@ const EventsLog = () => {
 
       doc.setFontSize(12); doc.setTextColor(0); doc.text("Executive Summary", 14, 45);
       doc.setFontSize(10);
-      doc.text(`Total Events: ${totalEvents}`, 14, 52);
-      doc.text(`Blocked Threats: ${totalBlocked}`, 14, 58);
+      doc.text(`Total Events Analyzed: ${totalEvents}`, 14, 52);
+      doc.text(`Attacks Blocked: ${totalBlocked}`, 14, 58);
       doc.text(`AI Anomalies Detected: ${totalAnomalies}`, 14, 64);
-
-      doc.text("Attack Breakdown:", 100, 45);
-      let yOffset = 52;
-      Object.entries(attackCounts).forEach(([type, count]) => {
-        doc.text(`- ${type}: ${count}`, 100, yOffset);
-        yOffset += 6;
-      });
 
       const tableColumns = ["Time", "Source IP", "Path", "Attack Type", "AI Score", "Classification", "Action"];
       const tableRows = exportData.map(log => {
@@ -627,7 +498,7 @@ const EventsLog = () => {
           eventTime ? new Date(eventTime).toLocaleString() : "—",
           log.source_ip,
           log.request_path?.length > 40 ? log.request_path.substring(0, 37) + '...' : (log.request_path || "—"),
-          log.attack_type,
+          log.attack_type === 'baseline_allow' || log.attack_type === 'None' ? 'Clean' : log.attack_type,
           ai.score ? ai.score.toFixed(3) : '-',
           ai.classification_score ? (ai.classification_blocked ? 'MALICIOUS' : 'BENIGN') : '-',
           log.action_taken
@@ -635,7 +506,7 @@ const EventsLog = () => {
       });
 
       autoTable(doc, {
-        startY: Math.max(75, yOffset + 10),
+        startY: 75,
         head: [tableColumns],
         body: tableRows,
         theme: 'grid',
@@ -644,12 +515,111 @@ const EventsLog = () => {
         alternateRowStyles: { fillColor: [249, 250, 251] },
       });
 
+      let currentY = doc.lastAutoTable.finalY + 15;
+      if (currentY > 130) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(14); doc.setTextColor(30, 58, 138); doc.text("Comprehensive Threat Analysis (Visualized)", 14, currentY);
+      currentY += 10;
+
+      const drawHorizontalBarChart = (title, data, startX, startY, colorMap = null, defaultColor = [30, 58, 138]) => {
+        doc.setFontSize(11); doc.setTextColor(0); doc.text(title, startX, startY);
+        let y = startY + 8;
+        const maxVal = Math.max(...Object.values(data), 1);
+        const maxBarWidth = 40; 
+        const entries = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if(entries.length === 0) { doc.setFontSize(9); doc.text("No data", startX, y); return y + 10; }
+        entries.forEach(([label, val]) => {
+          doc.setFontSize(9); doc.setTextColor(100);
+          let displayLabel = label === 'baseline_allow' || label === 'None' ? 'Clean/Normal' : label;
+          displayLabel = displayLabel.length > 18 ? displayLabel.substring(0, 16) + '..' : displayLabel;
+          doc.text(displayLabel, startX, y);
+          const barWidth = (val / maxVal) * maxBarWidth;
+          if (colorMap && colorMap[label]) doc.setFillColor(...colorMap[label]);
+          else if (displayLabel === 'Clean/Normal' || label === 'ALLOWED') doc.setFillColor(34, 197, 94);
+          else if (label === 'BLOCKED') doc.setFillColor(239, 68, 68);
+          else if (label === 'FLAGGED') doc.setFillColor(245, 158, 11);
+          else doc.setFillColor(...defaultColor);
+          doc.rect(startX + 35, y - 3, barWidth, 4, 'F');
+          doc.setTextColor(0); doc.text(val.toString(), startX + 35 + barWidth + 2, y);
+          y += 7;
+        });
+      };
+
+      const drawStackedBarChart = (title, data, startX, startY) => {
+        doc.setFontSize(11); doc.setTextColor(0); doc.text(title, startX, startY);
+        const total = Object.values(data).reduce((a,b) => a+b, 0);
+        if (total === 0) return;
+        const barWidth = 70; const barHeight = 8; let currentX = startX; const y = startY + 8;
+        Object.entries(data).forEach(([label, val]) => {
+            const w = (val / total) * barWidth;
+            if (label === 'BLOCKED') doc.setFillColor(239, 68, 68);
+            else if (label === 'ALLOWED') doc.setFillColor(34, 197, 94);
+            else doc.setFillColor(245, 158, 11);
+            doc.rect(currentX, y, w, barHeight, 'F');
+            const idx = Object.keys(data).indexOf(label);
+            doc.setFontSize(8); doc.setTextColor(100);
+            doc.rect(startX, y + 15 + (idx*6), 3, 3, 'F');
+            doc.text(`${label} (${val})`, startX + 5, y + 17.5 + (idx*6));
+            currentX += w;
+        });
+      };
+
+      const drawVerticalBarChart = (title, data, startX, startY) => {
+        doc.setFontSize(11); doc.setTextColor(0); doc.text(title, startX, startY);
+        let x = startX + 5; const yBase = startY + 35;
+        const maxVal = Math.max(...Object.values(data), 1);
+        const maxHeight = 20; const barWidth = 12; const spacing = 6;
+        const entries = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 4);
+        if(entries.length === 0) return;
+        entries.forEach(([label, val]) => {
+            const h = (val / maxVal) * maxHeight;
+            doc.setFillColor(139, 92, 246); 
+            doc.rect(x, yBase - h, barWidth, h, 'F');
+            doc.setFontSize(8); doc.setTextColor(0);
+            doc.text(val.toString(), x + (barWidth/2), yBase - h - 2, { align: 'center' });
+            doc.setFontSize(8); doc.setTextColor(100);
+            doc.text(label.substring(0, 6), x + (barWidth/2), yBase + 4, { align: 'center' });
+            x += barWidth + spacing;
+        });
+      };
+
+      const drawLollipopChart = (title, data, startX, startY) => {
+        doc.setFontSize(11); doc.setTextColor(0); doc.text(title, startX, startY);
+        let y = startY + 8;
+        const maxVal = Math.max(...Object.values(data), 1);
+        const maxLineLen = 35;
+        const entries = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if(entries.length === 0) return;
+        entries.forEach(([label, val]) => {
+            doc.setFontSize(9); doc.setTextColor(100);
+            let displayLabel = label.length > 12 ? label.substring(0, 10) + '..' : label;
+            doc.text(displayLabel, startX, y);
+            const lineLen = (val / maxVal) * maxLineLen;
+            doc.setDrawColor(220, 220, 220); doc.setLineWidth(1.5);
+            doc.line(startX + 25, y - 1, startX + 25 + lineLen, y - 1);
+            doc.setFillColor(245, 158, 11); 
+            doc.circle(startX + 25 + lineLen, y - 1, 2, 'F');
+            doc.setTextColor(0); doc.setFontSize(8);
+            doc.text(val.toString(), startX + 25 + lineLen + 4, y);
+            y += 7;
+        });
+      };
+
+      const attackColorMap = { 'baseline_allow': [34, 197, 94], 'None': [34, 197, 94] }; 
+      drawHorizontalBarChart("Top Attack Types", attackCounts, 14, currentY, attackColorMap, [239, 68, 68]);
+      drawStackedBarChart("Actions Taken", actionCounts, 105, currentY);
+      drawLollipopChart("Top Geographies", geoCounts, 196, currentY);
+      drawVerticalBarChart("HTTP Methods", methodCounts, 14, currentY + 45);
+      drawHorizontalBarChart("Most Targeted Paths", pathCounts, 105, currentY + 45, null, [59, 130, 246]);
+
       doc.save(`NeuroWAF_Report_${new Date().getTime()}.pdf`);
       setIsExportModalOpen(false);
-      
     } catch (err) {
       console.error("Export failed:", err);
-      alert("Failed to generate report. Check console for details.");
+      alert("Failed to generate report.");
     } finally {
       setIsExporting(false);
     }
@@ -659,10 +629,7 @@ const EventsLog = () => {
     setIsEmailing(true);
     setEmailMessage('');
     try {
-      const res = await fetch(`${API_BASE_URL}/report-settings/send`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const res = await fetch(`${API_BASE_URL}/report-settings/send`, { method: 'POST', credentials: 'include' });
       const data = await res.json();
       if (data.status === 'ok') {
         setEmailMessage('Report emailed successfully!');
@@ -678,23 +645,18 @@ const EventsLog = () => {
     }
   };
 
-  useEffect(() => { setCurrentPage(1); }, [timeMode, timePreset, startDate, endDate]);
-
   useEffect(() => {
     const timer = setTimeout(() => fetchLogs(), 300);
-
     if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
-
     const isLive = (timeMode === 'preset' && timePreset === 'live');
     if (isLive && liveStartTime) {
       liveIntervalRef.current = setInterval(() => fetchLogs(true), 2000);
     }
-
     return () => {
       clearTimeout(timer);
       if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
     };
-  }, [timeMode, timePreset, startDate, endDate, currentPage, liveStartTime]);
+  }, [liveStartTime]); 
 
   return (
     <div className="space-y-6 relative pb-10">
@@ -717,7 +679,7 @@ const EventsLog = () => {
           <div className="flex items-center bg-gray-50 border border-gray-200 rounded-lg p-1">
             <select
               value={timeMode}
-              onChange={(e) => setTimeMode(e.target.value)}
+              onChange={(e) => { setTimeMode(e.target.value); setCurrentPage(1); }}
               className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none px-2 py-1 cursor-pointer"
             >
               <option value="preset">Quick Range</option>
@@ -751,7 +713,7 @@ const EventsLog = () => {
             </div>
           )}
 
-            <div className="flex gap-2 border-l pl-3 ml-1">
+          <div className="flex gap-2 border-l pl-3 ml-1">
             <button onClick={() => setShowFilters(!showFilters)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="Toggle Filters">
               <Filter size={18} className={showFilters ? 'text-blue-600' : ''} />
             </button>
@@ -765,62 +727,82 @@ const EventsLog = () => {
         </div>
       </div>
 
-      {/* FILTERS PANEL */}
+      {/* --- DYNAMIC FILTERS PANEL --- */}
       {showFilters && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 shadow-sm space-y-4 mb-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 shadow-sm space-y-4 mb-4 animate-fade-in">
           <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-4">
             <Filter size={16} className="text-blue-600" /> Search & Advanced Filters
           </h3>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="lg:col-span-2">
-              <label className="block text-xs font-bold text-gray-700 mb-2">Search</label>
-              <input type="text" placeholder="Search or use: ip:192.168.1.1 attack:sql_injection" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-xs text-gray-500 mt-1">💡 Use prefixes: ip: attack: action: method: country:</p>
+              <label className="block text-xs font-bold text-gray-700 mb-2 flex items-center gap-1"><Search size={12} /> Global Search</label>
+              <input type="text" placeholder="Search by IP, country, or path..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            
+            {/* DYNAMIC DROPDOWNS FROM DATABASE */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-2">Attack Type</label>
               <select value={attackTypeFilter} onChange={(e) => { setAttackTypeFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="all">All Types</option>
-                <option value="None">Normal Traffic</option>
-                <option value="sql_injection">SQL Injection</option>
-                <option value="xss">XSS</option>
-                <option value="traversal">Path Traversal</option>
+                {dynamicFilters.attacks.map(type => (
+                  <option key={type} value={type}>{type === 'None' ? 'Normal Traffic' : type}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-2">Action Taken</label>
               <select value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="all">All Actions</option>
-                <option value="BLOCKED">Blocked</option>
-                <option value="FLAGGED">Flagged</option>
-                <option value="ALLOWED">Allowed</option>
+                {dynamicFilters.actions.map(action => (
+                  <option key={action} value={action}>{action}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-2">HTTP Method</label>
               <select value={methodFilter} onChange={(e) => { setMethodFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="all">All Methods</option>
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
+                {dynamicFilters.methods.map(method => (
+                  <option key={method} value={method}>{method}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-2">Country</label>
               <select value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="all">All Countries</option>
-                <option value="Russia">Russia</option>
-                <option value="China">China</option>
-                <option value="Iran">Iran</option>
+                {dynamicFilters.countries.map(country => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-2">Source IP</label>
-              <input type="text" placeholder="192.168.1.1" value={ipFilter} onChange={(e) => { setIpFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input
+                type="text"
+                placeholder="e.g., 192.168.1.1"
+                value={ipFilter}
+                onChange={(e) => { setIpFilter(e.target.value); setCurrentPage(1); }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
-          {(searchQuery || attackTypeFilter !== "all" || actionFilter !== "all" || countryFilter !== "all" || methodFilter !== "all" || ipFilter) && (
-            <div className="flex justify-end pt-2 border-t border-blue-200">
-              <button onClick={() => { setSearchQuery(""); setAttackTypeFilter("all"); setActionFilter("all"); setCountryFilter("all"); setMethodFilter("all"); setIpFilter(""); setCurrentPage(1); }} className="text-xs font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded">
+
+          {(searchQuery || attackTypeFilter !== 'all' || actionFilter !== 'all' || countryFilter !== 'all' || methodFilter !== 'all' || ipFilter) && (
+            <div className="flex justify-end pt-4 border-t border-blue-200 mt-4">
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setAttackTypeFilter('all');
+                  setActionFilter('all');
+                  setCountryFilter('all');
+                  setMethodFilter('all');
+                  setIpFilter('');
+                  setCurrentPage(1);
+                }}
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+              >
                 Clear All Filters
               </button>
             </div>
@@ -828,19 +810,17 @@ const EventsLog = () => {
         </div>
       )}
 
-      {/* TABLE */}
+      {/* --- UPGRADED: THREAT INTEL SIEM LAYOUT TABLE --- */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-bold tracking-wider">
+            <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-bold tracking-wider border-b">
               <tr>
                 <th className="px-6 py-4">Time</th>
-                <th className="px-6 py-4">Source</th>
-                <th className="px-6 py-4">Destination</th>
-                <th className="px-6 py-4">Method</th>
-                <th className="px-6 py-4">Request URI</th>
-                <th className="px-6 py-4">Attack Type</th>
-                <th className="px-6 py-4">Anomaly</th>
+                <th className="px-6 py-4">Threat Intel</th>
+                <th className="px-6 py-4">Request Target</th>
+                <th className="px-6 py-4">Attack Details</th>
+                <th className="px-6 py-4">AI Anomaly</th>
                 <th className="px-6 py-4">Classification</th>
                 <th className="px-6 py-4">Action</th>
                 <th className="px-6 py-4 text-center">Inspect</th>
@@ -848,124 +828,146 @@ const EventsLog = () => {
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
               {loading && logs.length === 0 ? (
-                <tr><td colSpan="10" className="p-8 text-center text-gray-500">Loading events...</td></tr>
+                <tr><td colSpan="8" className="p-8 text-center text-gray-500">Loading events...</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan="10" className="p-8 text-center text-gray-500">No logs found.</td></tr>
-              ) : logs.map((log, index) => (
-                <tr key={log.raw_log?.request_id || index} className="hover:bg-blue-50/50 transition-colors animate-fade-in">
-                  <td className="px-6 py-3 whitespace-nowrap text-gray-600 font-mono text-xs">
-                    {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : "—"}
-                  </td>
+                <tr><td colSpan="8" className="p-8 text-center text-gray-500">No logs match your search.</td></tr>
+              ) : logs.map((log, index) => {
+                const eventTime = log.timestamp || log.raw_log?.timestamp;
+                const isAnomalous = log.raw_log?.ai?.flagged;
+                
+                return (
+                  <tr key={log.raw_log?.request_id || index} className="hover:bg-blue-50/50 transition-colors animate-fade-in group">
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-600 font-mono text-xs align-top">
+                      {eventTime ? new Date(eventTime).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "—"}
+                    </td>
 
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-mono font-bold ${log.source_ip === '127.0.0.1' ? 'text-blue-500' : 'text-gray-700'}`}>
-                        {log.source_ip === '127.0.0.1' ? 'localhost' : log.source_ip}
+                    {/* --- VIRUSTOTAL LINK INTEGRATED HERE --- */}
+                    <td className="px-6 py-4 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        {log.source_ip === '127.0.0.1' ? (
+                          <span className="font-mono font-bold text-blue-500">localhost</span>
+                        ) : (
+                          <a 
+                            href={`https://www.virustotal.com/gui/search/${log.source_ip}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono font-bold text-gray-800 hover:text-blue-600 hover:underline transition-colors inline-flex items-center gap-1"
+                            title="Analyze IP on VirusTotal"
+                          >
+                            {log.source_ip}
+                            <ExternalLink size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </a>
+                        )}
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="bg-gray-100 border border-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                            {log.geo_location || 'UNK'}
+                          </span>
+                          {isAnomalous && (
+                            <span className="text-red-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> High Risk
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded border border-gray-200 bg-gray-50 text-gray-600 uppercase">
+                            {log.http_method}
+                          </span>
+                          <span className="font-mono text-[11px] text-gray-800 truncate max-w-[240px]" title={log.request_path}>
+                            {log.request_path}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-mono">
+                          <Server size={12} className="text-gray-300" /> 
+                          {log.destination_ip || "Internal WAF"}
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 align-top">
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${log.attack_type === 'None' || log.attack_type === 'baseline_allow' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                        {log.attack_type === 'None' || log.attack_type === 'baseline_allow' ? 'Clean Traffic' : log.attack_type}
                       </span>
-                      <span className="text-[10px] bg-gray-200 px-1.5 rounded text-gray-600">{log.geo_location}</span>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-2">
-                      <Server size={14} className="text-gray-400" />
-                      <span className="font-mono text-gray-600">{log.destination_ip || "waf"}</span>
-                    </div>
-                  </td>
+                    <td className="px-6 py-4 align-top">
+                      {isAnomalous ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold text-purple-700 uppercase tracking-widest">ANOMALY</span>
+                          <span className="text-xs font-mono font-bold bg-purple-50 text-purple-800 px-1.5 py-0.5 rounded w-fit border border-purple-100">
+                            {log.raw_log.ai.score?.toFixed(3)}
+                          </span>
+                        </div>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
 
-                  <td className="px-6 py-3">
-                    <span className="px-2 py-1 text-[10px] font-bold rounded border border-gray-200 bg-gray-50 text-gray-700">
-                      {log.http_method}
-                    </span>
-                  </td>
+                    <td className="px-6 py-4 align-top">
+                      {typeof log.raw_log?.ai?.classification_score === "number" ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`text-[10px] font-bold uppercase tracking-widest ${log.raw_log.ai.classification_blocked ? "text-red-700" : "text-green-700"}`}>
+                            {log.raw_log.ai.classification_blocked ? "MALICIOUS" : "BENIGN"}
+                          </span>
+                          <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded w-fit border ${log.raw_log.ai.classification_blocked ? "bg-red-50 text-red-800 border-red-100" : "bg-green-50 text-green-800 border-green-100"}`}>
+                            {log.raw_log.ai.classification_score.toFixed(3)}
+                          </span>
+                        </div>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
 
-                  <td className="px-6 py-3">
-                    <div className="font-mono text-[11px] text-gray-700 truncate max-w-[260px]" title={log.request_path}>
-                      {log.request_path}
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-3">
-                    <span className={`text-xs font-bold ${log.attack_type === 'None' ? 'text-gray-400' : 'text-red-600'}`}>
-                      {log.attack_type}
-                    </span>
-                  </td>
-
-                  <td className="px-6 py-3">
-                    {log.raw_log?.ai?.flagged ? (
-                      <span className="px-2 py-1 text-[10px] font-bold rounded border bg-purple-100 text-purple-700 border-purple-200">
-                        ANOMALY ({log.raw_log.ai.score?.toFixed(3)})
+                    <td className="px-6 py-4 align-top">
+                      <span className={`px-2 py-1 text-[10px] font-bold rounded border ${ACTION_CLASS[log.action_taken] || ACTION_CLASS.ALLOWED}`}>
+                        {log.action_taken}
                       </span>
-                    ) : <span className="text-gray-300">—</span>}
-                  </td>
+                    </td>
 
-                  <td className="px-6 py-3">
-                    {typeof log.raw_log?.ai?.classification_score === "number" ? (
-                      <span className={`px-2 py-1 text-[10px] font-bold rounded border ${
-                        log.raw_log.ai.classification_blocked ? "bg-red-100 text-red-700 border-red-200" : "bg-green-100 text-green-700 border-green-200"
-                      }`}>
-                        {log.raw_log.ai.classification_blocked ? "MALICIOUS" : "BENIGN"} ({log.raw_log.ai.classification_score.toFixed(3)})
-                      </span>
-                    ) : <span className="text-gray-300">—</span>}
-                  </td>
+                    <td className="px-6 py-4 text-center align-top">
+                      <div className="flex items-center justify-center gap-1.5 pt-1">
+                        {feedbackMap[log.id] && (
+                          <span title={
+                            feedbackMap[log.id] === 'correct' ? 'Verified Correct'
+                              : feedbackMap[log.id] === 'false_negative' ? 'Marked Missed Attack'
+                              : 'Marked False Positive'
+                          }>
+                            <CheckCircle size={14} className={
+                              feedbackMap[log.id] === 'correct' ? 'text-green-500'
+                                : feedbackMap[log.id] === 'false_negative' ? 'text-red-500'
+                                : 'text-amber-500'
+                            } />
+                          </span>
+                        )}
+                        <button onClick={() => setSelectedLog(log)} className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors" title="Inspect Event">
+                          <Eye size={18} />
+                        </button>
+                      </div>
+                    </td>
 
-                  <td className="px-6 py-3">
-                    <span className={`px-2 py-1 text-[10px] font-bold rounded border ${ACTION_CLASS[log.action_taken] || ACTION_CLASS.ALLOWED}`}>
-                      {log.action_taken}
-                    </span>
-                  </td>
-
-                  <td className="px-6 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      {feedbackMap[log.id] && (
-                        <span title={
-                          feedbackMap[log.id] === 'correct' ? 'Verified Correct'
-                            : feedbackMap[log.id] === 'false_negative' ? 'Marked Missed Attack'
-                            : 'Marked False Positive'
-                        }>
-                          <CheckCircle size={14} className={
-                            feedbackMap[log.id] === 'correct' ? 'text-green-500'
-                              : feedbackMap[log.id] === 'false_negative' ? 'text-red-500'
-                              : 'text-amber-500'
-                          } />
-                        </span>
-                      )}
-                      <button onClick={() => setSelectedLog(log)} className="text-gray-400 hover:text-blue-600">
-                        <Eye size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {/* PAGINATION */}
         <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
           <div className="text-xs text-gray-500">
             Page <span className="font-bold">{currentPage}</span> of <span className="font-bold">{totalPages}</span>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1 || (timeMode === "preset" && timePreset === "live")}
-              className="p-2 rounded-lg border disabled:opacity-30"
-            >
+            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1 || (timeMode === "preset" && timePreset === "live")} className="p-2 rounded-lg border disabled:opacity-30">
               <ChevronLeft size={16} />
             </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages || (timeMode === "preset" && timePreset === "live")}
-              className="p-2 rounded-lg border disabled:opacity-30"
-            >
+            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || (timeMode === "preset" && timePreset === "live")} className="p-2 rounded-lg border disabled:opacity-30">
               <ChevronRight size={16} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* --- NEW: EXPORT MODAL --- */}
+      {/* --- EXPORT MODAL --- */}
       {isExportModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
@@ -987,39 +989,27 @@ const EventsLog = () => {
                   className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="ALL">All Traffic (Comprehensive)</option>
-                  <option value="baseline_allow">Benign / Normal Traffic Only</option>
+                  <option value="baseline_allow">Clean / Normal Traffic Only</option>
                   <option disabled>──────────</option>
-                  <option value="sqli">SQL Injection</option>
-                  <option value="xss">Cross-Site Scripting (XSS)</option>
-                  <option value="traversal">Path Traversal</option>
-                  <option value="AI_CLASSIFICATION">AI Classified Attacks</option>
-                  <option value="rate_limit">DDoS / Rate Limit Spikes</option>
+                  {dynamicFilters.attacks.map(type => (
+                    <option key={type} value={type}>{type === 'None' ? 'Normal Traffic' : type}</option>
+                  ))}
                 </select>
               </div>
 
               <div className="flex gap-3">
-                <button
-                  onClick={handleExport}
-                  disabled={isExporting}
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
+                <button onClick={handleExport} disabled={isExporting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
                   {isExporting ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
                   {isExporting ? 'Generating...' : 'Download PDF'}
                 </button>
-                <button
-                  onClick={handleEmailReport}
-                  disabled={isEmailing}
-                  className="flex-1 py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
+                <button onClick={handleEmailReport} disabled={isEmailing} className="flex-1 py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
                   {isEmailing ? <Loader2 className="animate-spin" size={18} /> : <Mail size={18} />}
                   {isEmailing ? 'Sending...' : 'Email Report'}
                 </button>
               </div>
 
               {emailMessage && (
-                <p className={`text-sm font-medium text-center p-2 rounded-lg ${
-                  emailMessage.includes('success') ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
-                }`}>
+                <p className={`text-sm font-medium text-center p-2 rounded-lg ${emailMessage.includes('success') ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
                   {emailMessage}
                 </p>
               )}
@@ -1028,15 +1018,8 @@ const EventsLog = () => {
         </div>
       )}
 
-      {/* INSPECTOR */}
       {selectedLog && (
-        <InspectorDrawer
-          log={selectedLog}
-          onClose={() => setSelectedLog(null)}
-          onFeedbackSaved={(logId, label) => {
-            setFeedbackMap(prev => ({ ...prev, [logId]: label }));
-          }}
-        />
+        <InspectorDrawer log={selectedLog} onClose={() => setSelectedLog(null)} onFeedbackSaved={(logId, label) => setFeedbackMap(prev => ({ ...prev, [logId]: label }))} />
       )}
     </div>
   );

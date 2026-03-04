@@ -262,6 +262,10 @@ def get_logs(
         ip_filter=ip_filter,
     )
 
+@router.get("/logs/filters")
+def get_log_filters():
+    return LogsController.get_filter_options()
+
 
 @router.get("/policy/entries")
 def list_policy_entries(list_type: Optional[str] = None):

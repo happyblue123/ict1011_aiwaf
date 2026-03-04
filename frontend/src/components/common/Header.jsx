@@ -41,16 +41,6 @@ export default function Header() {
       <h1 className="text-xl font-bold text-gray-800 tracking-tight">{getTitle()}</h1>
 
       <div className="flex items-center gap-6">
-        {/* Search Bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input
-            type="text"
-            placeholder="Search logs, IPs..."
-            className="pl-10 pr-4 py-1.5 bg-gray-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-md text-sm transition-all outline-none w-64"
-          />
-        </div>
-
         {/* Notifications */}
         <button className="relative p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors">
           <Bell size={20} />

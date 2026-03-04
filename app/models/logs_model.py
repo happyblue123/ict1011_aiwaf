@@ -1,4 +1,3 @@
-# app/models/logs.py
 from __future__ import annotations
 
 import json
@@ -28,30 +27,20 @@ class LogsModel:
     
     @staticmethod
     def parse_datetime_to_utc(s: str) -> datetime:
-        """
-        Accepts:
-        - 'YYYY-MM-DD HH:MM:SS' (from your UI live mode)
-        - ISO '2026-02-04T05:48:03.751383+00:00'
-        Returns UTC datetime (aware).
-        """
         s = (s or "").strip()
         if not s:
             raise ValueError("empty datetime")
 
-        # datetime-local from input gives "YYYY-MM-DDTHH:MM" or "YYYY-MM-DDTHH:MM:SS"
         s = s.replace("T", " ")
 
-        # If has timezone in ISO, fromisoformat handles it
         try:
             dt = datetime.fromisoformat(s)
             if dt.tzinfo is None:
-                # treat naive as local? better: treat as UTC
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt.astimezone(timezone.utc)
         except Exception:
             pass
 
-        # fallback: strict MySQL format
         dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         return dt
 
@@ -64,16 +53,52 @@ class LogsModel:
         page: int,
         cursor_id: Optional[int] = None,
         is_live: bool = False,
+        attack_type_filter: Optional[str] = None,
+        action_filter: Optional[str] = None,
+        country_filter: Optional[str] = None,
+        method_filter: Optional[str] = None,
+        ip_filter: Optional[str] = None,
     ):
         where = []
         params = []
 
+        # 1. Global Search (Scans whole JSON text)
+        if search:
+            where.append("LOWER(CAST(raw_log AS CHAR)) LIKE %s")
+            params.append(f"%{search.lower()}%")
 
+        # 2. Attack Type Filter
+        if attack_type_filter and attack_type_filter.lower() != "all":
+            if attack_type_filter == "None":
+                where.append("(JSON_EXTRACT(raw_log, '$.decision.reasons') IS NULL OR JSON_LENGTH(JSON_EXTRACT(raw_log, '$.decision.reasons')) = 0 OR JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.reasons[0]')) LIKE 'baseline_allow%')")
+            else:
+                where.append("JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.reasons[0]')) LIKE %s")
+                params.append(f"{attack_type_filter}%")
+
+        # 3. Action Filter
+        if action_filter and action_filter.lower() != "all":
+            where.append("(LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.effective_action'))) = %s OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.action'))) = %s)")
+            val = "allow" if action_filter == "ALLOWED" else ("block" if action_filter == "BLOCKED" else "flag")
+            params.extend([val, val])
+
+        # 4. Country Filter
+        if country_filter and country_filter.lower() != "all":
+            where.append("LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.client.country'))) = %s")
+            params.append(country_filter.lower())
+
+        # 5. Method Filter
+        if method_filter and method_filter.lower() != "all":
+            where.append("UPPER(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.method'))) = %s")
+            params.append(method_filter.upper())
+
+        # 6. IP Filter
+        if ip_filter:
+            where.append("(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.client.ip')) LIKE %s OR JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.client_ip')) LIKE %s)")
+            params.extend([f"%{ip_filter}%", f"%{ip_filter}%"])
+
+        # 7. Time filters
         if is_live:
-            # If cursor_id is None, start from "now" by returning nothing initially.
-            # Simplest: set cursor to current max(log_id)
             if cursor_id is None:
-                # fetch max id
                 conn = get_conn()
                 try:
                     with conn.cursor() as cur:
@@ -84,10 +109,6 @@ class LogsModel:
 
             where.append("log_id > %s")
             params.append(cursor_id)
-
-            # In live mode, total/pages is kind of meaningless; but keep it consistent:
-            # We can set total = number of rows matching cursor filter.
-            # (optional) you may just return total = len(rows)
         else:
             if since_utc:
                 where.append("JSON_EXTRACT(raw_log, '$.ts') >= %s")
@@ -129,10 +150,6 @@ class LogsModel:
 
     @staticmethod
     def fetch_attack_types(limit: int = 50) -> List[str]:
-        """
-        Returns a list like ["None", "cmd_injection", "sql_injection", ...]
-        Derived from decision.reasons[0] prefix in raw_log JSON.
-        """
         sql = """
         SELECT DISTINCT
           SUBSTRING_INDEX(
@@ -145,7 +162,6 @@ class LogsModel:
           AND JSON_LENGTH(JSON_EXTRACT(raw_log, '$.decision.reasons')) > 0
         LIMIT %s
         """
-
         conn = get_conn()
         try:
             with conn.cursor() as cur:
@@ -160,21 +176,11 @@ class LogsModel:
             if t and t != "null":
                 types.append(t)
 
-        # Always include None at top so UI can show "Normal Traffic"
-        # Also de-dupe and sort for stable UI.
         types = sorted(set(types))
         return ["None"] + types
 
     @staticmethod
     def fetch_raw_logs_window(range: str, limit: int = 20000) -> List[Dict[str, Any]]:
-        """
-        Fetch raw_log objects within a time window using JSON_EXTRACT on $.ts.
-        This avoids pulling a large LIMIT and filtering in Python.
-
-        range: "24h" | "7d"
-        limit: safety cap
-        Returns: list[dict] (decoded raw_log)
-        """
         r = (range or "").lower().strip()
         if r == "7d":
             start = datetime.now(timezone.utc) - timedelta(days=7)
@@ -206,17 +212,12 @@ class LogsModel:
 
     @staticmethod
     def fetch_latest_event_rows(limit: int = 50) -> List[Dict[str, Any]]:
-        """
-        Fetch latest rows from event_logs for 'Recent Events' panel.
-        Returns: [{"log_id":..., "raw_log": <dict>}, ...]
-        """
         sql = """
             SELECT log_id, raw_log
             FROM event_logs
             ORDER BY log_id DESC
             LIMIT %s
         """
-
         conn = get_conn()
         try:
             with conn.cursor() as cur:
@@ -231,3 +232,122 @@ class LogsModel:
             obj = raw if isinstance(raw, dict) else json.loads(raw)
             out.append({"log_id": r["log_id"], "raw_log": obj})
         return out
+    
+
+    @staticmethod
+    def fetch_filter_options() -> Dict[str, List[str]]:
+        """Scans the database for all unique dropdown filter options."""
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                # 1. Unique Attack Types
+                cur.execute("""
+                    SELECT DISTINCT SUBSTRING_INDEX(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.reasons[0]')), ':', 1) AS val
+                    FROM event_logs WHERE JSON_EXTRACT(raw_log, '$.decision.reasons') IS NOT NULL
+                """)
+                attacks = [r["val"] for r in cur.fetchall() if r.get("val") and r["val"] != "null"]
+
+                # 2. Unique HTTP Methods
+                cur.execute("""
+                    SELECT DISTINCT UPPER(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.method'))) AS val
+                    FROM event_logs WHERE JSON_EXTRACT(raw_log, '$.method') IS NOT NULL
+                """)
+                methods = [r["val"] for r in cur.fetchall() if r.get("val") and r["val"] != "null"]
+
+                # 3. Unique Countries
+                cur.execute("""
+                    SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.client.country')) AS val
+                    FROM event_logs WHERE JSON_EXTRACT(raw_log, '$.client.country') IS NOT NULL
+                """)
+                countries = [r["val"] for r in cur.fetchall() if r.get("val") and r["val"] != "null"]
+
+                # 4. Unique Actions
+                cur.execute("""
+                    SELECT DISTINCT UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.effective_action')), JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.action')))) AS val
+                    FROM event_logs
+                """)
+                actions = [r["val"] for r in cur.fetchall() if r.get("val") and r["val"] != "null"]
+
+        finally:
+            conn.close()
+
+        # Clean up Attack Types
+        clean_attacks = set()
+        for a in attacks:
+            if not a.startswith("baseline_allow"):
+                clean_attacks.add(a)
+        attacks_list = ["None"] + sorted(list(clean_attacks))
+
+        # Standardize Actions to match UI (BLOCK -> BLOCKED)
+        clean_actions = set()
+        for a in actions:
+            if a == "BLOCK": clean_actions.add("BLOCKED")
+            elif a == "FLAG": clean_actions.add("FLAGGED")
+            elif a == "ALLOW": clean_actions.add("ALLOWED")
+            else: clean_actions.add(a)
+
+        return {
+            "attacks": attacks_list,
+            "methods": sorted(list(set(methods))),
+            "countries": sorted(list(set(countries))),
+            "actions": sorted(list(clean_actions))
+        }
+    
+    @staticmethod
+    def fetch_filter_options() -> Dict[str, List[str]]:
+        """Scans the database for all unique dropdown filter options."""
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                # 1. Unique Attack Types
+                cur.execute("""
+                    SELECT DISTINCT SUBSTRING_INDEX(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.reasons[0]')), ':', 1) AS val
+                    FROM event_logs WHERE JSON_EXTRACT(raw_log, '$.decision.reasons') IS NOT NULL
+                """)
+                attacks = [r["val"] for r in cur.fetchall() if r and r.get("val") and r["val"] != "null"]
+
+                # 2. Unique HTTP Methods
+                cur.execute("""
+                    SELECT DISTINCT UPPER(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.method'))) AS val
+                    FROM event_logs WHERE JSON_EXTRACT(raw_log, '$.method') IS NOT NULL
+                """)
+                methods = [r["val"] for r in cur.fetchall() if r and r.get("val") and r["val"] != "null"]
+
+                # 3. Unique Countries
+                cur.execute("""
+                    SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.client.country')) AS val
+                    FROM event_logs WHERE JSON_EXTRACT(raw_log, '$.client.country') IS NOT NULL
+                """)
+                countries = [r["val"] for r in cur.fetchall() if r and r.get("val") and r["val"] != "null"]
+
+                # 4. Unique Actions
+                cur.execute("""
+                    SELECT DISTINCT UPPER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.effective_action')), JSON_UNQUOTE(JSON_EXTRACT(raw_log, '$.decision.action')))) AS val
+                    FROM event_logs
+                """)
+                actions = [r["val"] for r in cur.fetchall() if r and r.get("val") and r["val"] != "null"]
+
+        finally:
+            conn.close()
+
+        # Clean up Attack Types (remove duplicates and baseline allows)
+        clean_attacks = set()
+        for a in attacks:
+            if not a.startswith("baseline_allow"):
+                clean_attacks.add(a)
+        attacks_list = ["None"] + sorted(list(clean_attacks))
+
+        # Standardize Actions to match UI
+        clean_actions = set()
+        for a in actions:
+            if a == "BLOCK": clean_actions.add("BLOCKED")
+            elif a == "FLAG": clean_actions.add("FLAGGED")
+            elif a == "ALLOW": clean_actions.add("ALLOWED")
+            else: clean_actions.add(a)
+
+        return {
+            "attacks": attacks_list,
+            "methods": sorted(list(set(methods))),
+            "countries": sorted(list(set(countries))),
+            "actions": sorted(list(clean_actions))
+        }
