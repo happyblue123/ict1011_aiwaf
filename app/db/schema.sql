@@ -129,8 +129,6 @@ CREATE TABLE IF NOT EXISTS report_settings (
     schedule_time TIME DEFAULT '00:00',          -- time of day to send
     schedule_dow TINYINT NULL,                   -- 0=Mon..6=Sun for weekly
     schedule_dom TINYINT NULL,                   -- 1-31 for monthly
-    smtp_user VARCHAR(255) DEFAULT '',
-    smtp_password VARCHAR(255) DEFAULT '',
     last_sent_at TIMESTAMP NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

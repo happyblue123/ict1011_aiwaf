@@ -4,6 +4,7 @@ Runs as a daemon thread — checks every 60 seconds if a report is due.
 """
 from __future__ import annotations
 
+import os
 import time
 import threading
 from datetime import datetime, timezone, timedelta
@@ -153,7 +154,7 @@ def _is_report_due(settings: dict) -> bool:
     return last_sent < candidate <= now
 
 
-def _send_report(settings: dict):
+def _send_report(settings: dict, env_smtp_user: str = "", env_smtp_password: str = ""):
     """Generate PDF and send email."""
     # Lazy imports to avoid circular imports at module load
     from app.services.report_service import generate_report_pdf
@@ -163,8 +164,8 @@ def _send_report(settings: dict):
     period = _FREQ_PERIOD.get(freq, "24h")
 
     recipient = settings.get("recipient_email", "")
-    smtp_user = settings.get("smtp_user", "")
-    smtp_password = settings.get("smtp_password", "")
+    smtp_user = settings.get("smtp_user", "") or env_smtp_user
+    smtp_password = settings.get("smtp_password", "") or env_smtp_password
 
     if not recipient or not smtp_user or not smtp_password:
         print("[ReportScheduler] Missing email config, skipping", flush=True)
@@ -180,7 +181,7 @@ def _send_report(settings: dict):
         print(f"[ReportScheduler] Failed: {e}", flush=True)
 
 
-def _scheduler_loop():
+def _scheduler_loop(env_smtp_user: str = "", env_smtp_password: str = ""):
     """Main loop — runs forever in a daemon thread."""
     # Wait a bit on startup to let the app fully initialize
     time.sleep(10)
@@ -190,7 +191,7 @@ def _scheduler_loop():
         try:
             settings = _read_settings()
             if settings and _is_report_due(settings):
-                _send_report(settings)
+                _send_report(settings, env_smtp_user, env_smtp_password)
         except Exception as e:
             print(f"[ReportScheduler] Loop error: {e}", flush=True)
 
@@ -199,6 +200,8 @@ def _scheduler_loop():
 
 def start_scheduler():
     """Start the background scheduler thread. Call once from main.py startup."""
-    t = threading.Thread(target=_scheduler_loop, daemon=True, name="report-scheduler")
+    env_smtp_user = os.getenv("SMTP_SENDER_GMAIL", "")
+    env_smtp_password = os.getenv("SMTP_APP_PASSWORD", "")
+    t = threading.Thread(target=_scheduler_loop, args=(env_smtp_user, env_smtp_password), daemon=True, name="report-scheduler")
     t.start()
     print("[ReportScheduler] Thread launched", flush=True)
