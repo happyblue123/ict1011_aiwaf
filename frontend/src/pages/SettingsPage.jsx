@@ -53,9 +53,6 @@ const SettingsPage = () => {
   const [reportTime, setReportTime] = useState('00:00');
   const [reportDow, setReportDow] = useState(null);      // 0=Mon..6=Sun
   const [reportDom, setReportDom] = useState(null);      // 1..31
-  // defaults pulled at build time from VITE_ environment variables (set in .env)
-  const [reportSmtpUser, setReportSmtpUser] = useState(import.meta.env.VITE_SMTP_SENDER_GMAIL || '');
-  const [reportSmtpPassword, setReportSmtpPassword] = useState(import.meta.env.VITE_SMTP_APP_PASSWORD || '');
   const [reportLastSent, setReportLastSent] = useState(null);
   const [sendingReport, setSendingReport] = useState(false);
   const [reportMessage, setReportMessage] = useState('');
@@ -96,9 +93,6 @@ const SettingsPage = () => {
             setReportTime(rd.schedule_time || '00:00');
             setReportDow(rd.schedule_dow);
             setReportDom(rd.schedule_dom);
-            // if backend returns empty values, keep build-time defaults from env vars
-            setReportSmtpUser(rd.smtp_user || import.meta.env.VITE_SMTP_SENDER_GMAIL || '');
-            setReportSmtpPassword(rd.smtp_password || import.meta.env.VITE_SMTP_APP_PASSWORD || '');
             setReportLastSent(rd.last_sent_at || null);
           }
         } catch (e) { /* report settings optional */ }

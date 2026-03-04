@@ -164,8 +164,8 @@ def _send_report(settings: dict, env_smtp_user: str = "", env_smtp_password: str
     period = _FREQ_PERIOD.get(freq, "24h")
 
     recipient = settings.get("recipient_email", "")
-    smtp_user = settings.get("smtp_user", "") or env_smtp_user
-    smtp_password = settings.get("smtp_password", "") or env_smtp_password
+    smtp_user = env_smtp_user
+    smtp_password = env_smtp_password
 
     if not recipient or not smtp_user or not smtp_password:
         print("[ReportScheduler] Missing email config, skipping", flush=True)

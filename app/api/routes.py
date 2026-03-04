@@ -418,8 +418,6 @@ class ReportSettingsUpdate(BaseModel):
     schedule_time: Optional[str] = None       # HH:MM
     schedule_dow: Optional[int] = None        # 0=Mon..6=Sun
     schedule_dom: Optional[int] = None        # 1..31
-    smtp_user: Optional[str] = None
-    smtp_password: Optional[str] = None
 
 
 @router.get("/report-settings")

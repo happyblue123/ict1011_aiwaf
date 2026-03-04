@@ -21,10 +21,7 @@ class ReportController:
         finally:
             conn.close()
 
-        # If there is no row yet return the defaults.  We also
-        # include environment fallbacks so that the SMTP credentials
-        # coming from .env are visible to the frontend even before the
-        # user has saved anything.
+        # If there is no row yet return the defaults
         if not row:
             return {
                 "enabled": False,
@@ -33,13 +30,10 @@ class ReportController:
                 "schedule_time": "00:00",
                 "schedule_dow": None,
                 "schedule_dom": None,
-                "smtp_user": os.getenv("SMTP_SENDER_GMAIL", ""),
-                "smtp_password": os.getenv("SMTP_APP_PASSWORD", ""),
                 "last_sent_at": None,
             }
 
-        # Use values from the database, but fall back to environment
-        # variables when the fields are empty strings.
+        # Return database settings
         return {
             "enabled": bool(row["enabled"]),
             "recipient_email": row["recipient_email"] or "",
@@ -47,8 +41,6 @@ class ReportController:
             "schedule_time": (row.get("schedule_time") or "00:00"),
             "schedule_dow": row.get("schedule_dow"),
             "schedule_dom": row.get("schedule_dom"),
-            "smtp_user": row["smtp_user"] or os.getenv("SMTP_SENDER_GMAIL", ""),
-            "smtp_password": row["smtp_password"] or os.getenv("SMTP_APP_PASSWORD", ""),
             "last_sent_at": row["last_sent_at"].isoformat() if row["last_sent_at"] else None,
         }
 
@@ -65,9 +57,7 @@ class ReportController:
                         frequency       = %s,
                         schedule_time   = %s,
                         schedule_dow    = %s,
-                        schedule_dom    = %s,
-                        smtp_user       = %s,
-                        smtp_password   = %s
+                        schedule_dom    = %s
                     WHERE id = 1
                     """,
                     (
@@ -77,8 +67,6 @@ class ReportController:
                         data.get("schedule_time", "00:00"),
                         data.get("schedule_dow"),
                         data.get("schedule_dom"),
-                        data.get("smtp_user", "") or "",
-                        data.get("smtp_password", "") or "",
                     ),
                 )
         finally:
@@ -100,9 +88,9 @@ class ReportController:
         if not row:
             return {"status": "error", "message": "Report settings not configured"}
 
-        # Fall back to environment variables for SMTP credentials if DB values are empty
-        smtp_user = row.get("smtp_user") or os.getenv("SMTP_SENDER_GMAIL", "")
-        smtp_password = row.get("smtp_password") or os.getenv("SMTP_APP_PASSWORD", "")
+        # Get SMTP credentials from environment
+        smtp_user = os.getenv("SMTP_SENDER_GMAIL", "")
+        smtp_password = os.getenv("SMTP_APP_PASSWORD", "")
         recipient = row.get("recipient_email", "")
 
         # Debug logging
@@ -113,12 +101,12 @@ class ReportController:
         if not smtp_user or not smtp_password or not recipient:
             missing = []
             if not smtp_user:
-                missing.append("sender email")
+                missing.append("SMTP_SENDER_GMAIL (.env)")
             if not smtp_password:
-                missing.append("app password")
+                missing.append("SMTP_APP_PASSWORD (.env)")
             if not recipient:
                 missing.append("recipient email")
-            return {"status": "error", "message": f"Missing: {', '.join(missing)}. Did you save the settings?"}
+            return {"status": "error", "message": f"Missing: {', '.join(missing)}"}
 
         try:
             pdf_bytes = generate_report_pdf(period="24h")
