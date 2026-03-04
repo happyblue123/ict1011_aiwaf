@@ -241,6 +241,11 @@ def get_logs(
     time_preset: str = "24h",
     start_date: str | None = None,
     end_date: str | None = None,
+    attack_type_filter: Optional[str] = None,
+    action_filter: Optional[str] = None,
+    country_filter: Optional[str] = None,
+    method_filter: Optional[str] = None,
+    ip_filter: Optional[str] = None,
 ):
     return LogsController.get_logs(
         search=search,
@@ -250,6 +255,11 @@ def get_logs(
         time_preset=time_preset,
         start_date=start_date,
         end_date=end_date,
+        attack_type_filter=attack_type_filter,
+        action_filter=action_filter,
+        country_filter=country_filter,
+        method_filter=method_filter,
+        ip_filter=ip_filter,
     )
 
 

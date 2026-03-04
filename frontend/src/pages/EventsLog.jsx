@@ -419,7 +419,16 @@ const EventsLog = () => {
   // Feedback status map: { log_id: 'correct' | 'false_positive' }
   const [feedbackMap, setFeedbackMap] = useState({});
 
-  // --- NEW: Export Modal States ---
+  // Search and Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [attackTypeFilter, setAttackTypeFilter] = useState('all');
+  const [actionFilter, setActionFilter] = useState('all');
+  const [countryFilter, setCountryFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
+  const [ipFilter, setIpFilter] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Export Modal States
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportAttackFilter, setExportAttackFilter] = useState('ALL');
   const [isExporting, setIsExporting] = useState(false);
@@ -441,6 +450,14 @@ const EventsLog = () => {
       setLiveStartTime(null);
     }
   };
+
+  // reload data when search/filters update
+  useEffect(() => {
+    fetchLogs();
+  }, [searchQuery, attackTypeFilter, actionFilter, countryFilter, methodFilter, ipFilter]);
+
+  // NOTE: the previous version had two identical effects; the second one was redundant and has been removed.
+
 
   const fetchLogs = async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setLoading(true);
@@ -464,6 +481,14 @@ const EventsLog = () => {
 
       if (timeMode === 'after' || timeMode === 'between') queryParams.start_date = startDate;
       if (timeMode === 'before' || timeMode === 'between') queryParams.end_date = endDate;
+
+      // apply search/filter parameters
+      if (searchQuery.trim()) queryParams.search = searchQuery;
+      if (attackTypeFilter !== 'all') queryParams.attack_type_filter = attackTypeFilter;
+      if (actionFilter !== 'all') queryParams.action_filter = actionFilter;
+      if (countryFilter !== 'all') queryParams.country_filter = countryFilter;
+      if (methodFilter !== 'all') queryParams.method_filter = methodFilter;
+      if (ipFilter.trim()) queryParams.ip_filter = ipFilter;
 
       const query = new URLSearchParams(queryParams).toString();
       const res = await fetch(`${API_BASE_URL}/logs?${query}`, { credentials: "include" });
@@ -516,11 +541,44 @@ const EventsLog = () => {
       if (timeMode === 'after' || timeMode === 'between') queryParams.start_date = startDate;
       if (timeMode === 'before' || timeMode === 'between') queryParams.end_date = endDate;
 
+      // include filters used in the UI so export matches what the user sees
+      if (searchQuery.trim()) queryParams.search = searchQuery;
+      if (attackTypeFilter !== 'all') queryParams.attack_type_filter = attackTypeFilter;
+      if (actionFilter !== 'all') queryParams.action_filter = actionFilter;
+      if (countryFilter !== 'all') queryParams.country_filter = countryFilter;
+      if (methodFilter !== 'all') queryParams.method_filter = methodFilter;
+      if (ipFilter.trim()) queryParams.ip_filter = ipFilter;
+
       const res = await fetch(`${API_BASE_URL}/logs?${new URLSearchParams(queryParams).toString()}`, { credentials: "include" });
       const data = await res.json();
       let exportData = Array.isArray(data.logs) ? data.logs : [];
 
-      // Apply the Filter properly
+      // Also apply the same UI filters (searchQuery, attackTypeFilter, etc) so exported rows match visible table
+      if (searchQuery.trim()) {
+        const sq = searchQuery.toLowerCase();
+        exportData = exportData.filter(l =>
+          l.request_path?.toLowerCase().includes(sq) ||
+          l.source_ip?.includes(sq) ||
+          l.attack_type?.toLowerCase().includes(sq)
+        );
+      }
+      if (attackTypeFilter !== 'all') {
+        exportData = exportData.filter(l => l.attack_type === attackTypeFilter);
+      }
+      if (actionFilter !== 'all') {
+        exportData = exportData.filter(l => l.action_taken === actionFilter);
+      }
+      if (countryFilter !== 'all') {
+        exportData = exportData.filter(l => l.geo_location === countryFilter);
+      }
+      if (methodFilter !== 'all') {
+        exportData = exportData.filter(l => l.http_method === methodFilter);
+      }
+      if (ipFilter.trim()) {
+        exportData = exportData.filter(l => l.source_ip === ipFilter);
+      }
+
+      // Apply the Attack-type-only export filter as before
       if (exportAttackFilter !== 'ALL') {
         exportData = exportData.filter(log => {
           if (exportAttackFilter === 'baseline_allow') {
@@ -693,10 +751,12 @@ const EventsLog = () => {
             </div>
           )}
 
-          {/* --- NEW: Wrapped refresh and export inside a container --- */}
-          <div className="flex gap-2 border-l pl-3 ml-1">
+            <div className="flex gap-2 border-l pl-3 ml-1">
+            <button onClick={() => setShowFilters(!showFilters)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="Toggle Filters">
+              <Filter size={18} className={showFilters ? 'text-blue-600' : ''} />
+            </button>
             <button onClick={() => fetchLogs()} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition-colors" title="Refresh">
-              <RefreshCw size={18} className={timePreset === 'live' ? "animate-spin" : ""} />
+              <RefreshCw size={18} className={timePreset === 'live' ? 'animate-spin' : ''} />
             </button>
             <button onClick={() => setIsExportModalOpen(true)} className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors shadow-sm">
               <Download size={16} /> Export Report
@@ -704,6 +764,69 @@ const EventsLog = () => {
           </div>
         </div>
       </div>
+
+      {/* FILTERS PANEL */}
+      {showFilters && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 shadow-sm space-y-4 mb-4">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-4">
+            <Filter size={16} className="text-blue-600" /> Search & Advanced Filters
+          </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="lg:col-span-2">
+              <label className="block text-xs font-bold text-gray-700 mb-2">Search</label>
+              <input type="text" placeholder="Search or use: ip:192.168.1.1 attack:sql_injection" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p className="text-xs text-gray-500 mt-1">💡 Use prefixes: ip: attack: action: method: country:</p>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2">Attack Type</label>
+              <select value={attackTypeFilter} onChange={(e) => { setAttackTypeFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="all">All Types</option>
+                <option value="None">Normal Traffic</option>
+                <option value="sql_injection">SQL Injection</option>
+                <option value="xss">XSS</option>
+                <option value="traversal">Path Traversal</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2">Action Taken</label>
+              <select value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="all">All Actions</option>
+                <option value="BLOCKED">Blocked</option>
+                <option value="FLAGGED">Flagged</option>
+                <option value="ALLOWED">Allowed</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2">HTTP Method</label>
+              <select value={methodFilter} onChange={(e) => { setMethodFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="all">All Methods</option>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2">Country</label>
+              <select value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="all">All Countries</option>
+                <option value="Russia">Russia</option>
+                <option value="China">China</option>
+                <option value="Iran">Iran</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-2">Source IP</label>
+              <input type="text" placeholder="192.168.1.1" value={ipFilter} onChange={(e) => { setIpFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          {(searchQuery || attackTypeFilter !== "all" || actionFilter !== "all" || countryFilter !== "all" || methodFilter !== "all" || ipFilter) && (
+            <div className="flex justify-end pt-2 border-t border-blue-200">
+              <button onClick={() => { setSearchQuery(""); setAttackTypeFilter("all"); setActionFilter("all"); setCountryFilter("all"); setMethodFilter("all"); setIpFilter(""); setCurrentPage(1); }} className="text-xs font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded">
+                Clear All Filters
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TABLE */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

@@ -120,6 +120,99 @@ class LogsController:
         }
 
     @staticmethod
+    def _apply_search_filters(log: Dict[str, Any], search: str) -> bool:
+        """
+        Apply client-side search/filter logic to a single log entry.
+        Supports multiple filter formats:
+        - 'ip:192.168.1.1' - filter by source IP
+        - 'attack:sql_injection' - filter by attack type
+        - 'action:BLOCKED' - filter by action taken
+        - 'method:POST' - filter by HTTP method
+        - 'country:Russia' - filter by country
+        - Free text search in path, params, IP, attack type
+        """
+        if not search or not search.strip():
+            return True
+        
+        search = search.strip().lower()
+        
+        # Structured filters
+        if search.startswith("ip:"):
+            ip = search[3:].strip()
+            return ip.lower() in log.get("source_ip", "").lower()
+        
+        if search.startswith("attack:"):
+            attack = search[7:].strip()
+            return attack.lower() in log.get("attack_type", "").lower()
+        
+        if search.startswith("action:"):
+            action = search[7:].strip()
+            return action.lower() in log.get("action_taken", "").lower()
+        
+        if search.startswith("method:"):
+            method = search[7:].strip()
+            return method.upper() == log.get("http_method", "").upper()
+        
+        if search.startswith("country:"):
+            country = search[8:].strip()
+            geo_location = log.get("geo_location", "").lower()
+            return country.lower() in geo_location
+        
+        # Free text search across multiple fields
+        searchable_fields = [
+            log.get("source_ip", ""),
+            log.get("request_path", ""),
+            log.get("request_params", ""),
+            log.get("attack_type", ""),
+            log.get("action_taken", ""),
+            log.get("geo_location", ""),
+        ]
+        
+        return any(search in field.lower() for field in searchable_fields if field)
+
+    @staticmethod
+    def filter_logs(
+        logs: list,
+        search: str,
+        attack_type_filter: Optional[str] = None,
+        action_filter: Optional[str] = None,
+        country_filter: Optional[str] = None,
+        method_filter: Optional[str] = None,
+        ip_filter: Optional[str] = None,
+    ) -> list:
+        """
+        Apply multiple filters to logs.
+        Returns filtered list of logs.
+        """
+        filtered = logs
+        
+        # Apply search
+        if search and search.strip():
+            filtered = [log for log in filtered if LogsController._apply_search_filters(log, search)]
+        
+        # Apply attack type filter
+        if attack_type_filter and attack_type_filter.lower() != "all":
+            filtered = [log for log in filtered if log.get("attack_type", "") == attack_type_filter]
+        
+        # Apply action filter
+        if action_filter and action_filter.lower() != "all":
+            filtered = [log for log in filtered if log.get("action_taken", "") == action_filter]
+        
+        # Apply country filter
+        if country_filter and country_filter.lower() != "all":
+            filtered = [log for log in filtered if country_filter.lower() in log.get("geo_location", "").lower()]
+        
+        # Apply HTTP method filter
+        if method_filter and method_filter.lower() != "all":
+            filtered = [log for log in filtered if log.get("http_method", "").upper() == method_filter.upper()]
+        
+        # Apply IP filter
+        if ip_filter and ip_filter.strip():
+            filtered = [log for log in filtered if ip_filter.lower() in log.get("source_ip", "").lower()]
+        
+        return filtered
+
+    @staticmethod
     def get_logs(
         search: str,
         limit: int,
@@ -129,6 +222,11 @@ class LogsController:
         start_date: Optional[str],
         end_date: Optional[str],
         cursor_id: Optional[int] = None,
+        attack_type_filter: Optional[str] = None,
+        action_filter: Optional[str] = None,
+        country_filter: Optional[str] = None,
+        method_filter: Optional[str] = None,
+        ip_filter: Optional[str] = None,
     ) -> Dict[str, Any]:
         since_utc: Optional[datetime] = None
         until_utc: Optional[datetime] = None
@@ -161,6 +259,18 @@ class LogsController:
         )
 
         logs = [LogsController._to_display_row(r["log_id"], r["raw_log"]) for r in rows]
+        
+        # Apply additional filters
+        logs = LogsController.filter_logs(
+            logs,
+            search=search,
+            attack_type_filter=attack_type_filter,
+            action_filter=action_filter,
+            country_filter=country_filter,
+            method_filter=method_filter,
+            ip_filter=ip_filter,
+        )
+        
         total_pages = max(1, (total + limit - 1) // limit)
 
         return {
@@ -168,7 +278,7 @@ class LogsController:
             "pagination": {
                 "page": page,
                 "limit": limit,
-                "total": total,
-                "total_pages": total_pages,
+                "total": len(logs),
+                "total_pages": max(1, (len(logs) + limit - 1) // limit),
             },
         }
