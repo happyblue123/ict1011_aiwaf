@@ -56,6 +56,8 @@ class SettingsController:
                     "error_html": (toggles["error_html"] or "") if toggles else "",
                     "bot_enabled": bool(toggles["bot_enabled"]) if toggles else False,
                     "bot_html": (toggles["bot_html"] or "") if toggles else "",
+                    "custom_404_enabled": bool(toggles["custom_404_enabled"]) if toggles else False,
+                    "custom_404_html": (toggles["custom_404_html"] or "") if toggles else "",
                 },
             }
         finally:
@@ -132,7 +134,9 @@ class SettingsController:
                         SET error_enabled = %s,
                             error_html    = %s,
                             bot_enabled   = %s,
-                            bot_html      = %s
+                            bot_html      = %s,
+                            custom_404_enabled = %s,
+                            custom_404_html    = %s
                         WHERE id = 1
                         """,
                         (
@@ -140,6 +144,8 @@ class SettingsController:
                             custom_pages.get("error_html", "") or "",
                             bool(custom_pages.get("bot_enabled", False)),
                             custom_pages.get("bot_html", "") or "",
+                            bool(custom_pages.get("custom_404_enabled", False)),
+                            custom_pages.get("custom_404_html", "") or "",
                         ),
                     )
  

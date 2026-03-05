@@ -58,7 +58,12 @@ CREATE TABLE IF NOT EXISTS ip_policy_rules (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_ip_policy_ip (ip_address),
-    INDEX idx_ip_policy_list (list_type)
+    INDEX idx_ip_policy_list (list_type),
+    -- enforce at the database level that a given IP can only appear once
+    -- per list_type.  existing installations will need to run an ALTER
+    -- table manually if duplicates already exist; for new databases the
+    -- constraint is created automatically.
+    UNIQUE KEY uniq_ip_policy (ip_address, list_type)
 ) ENGINE=InnoDB;
 
 -- ==========================================
@@ -90,6 +95,8 @@ CREATE TABLE IF NOT EXISTS waf_settings (
     error_html TEXT DEFAULT NULL,
     bot_enabled BOOLEAN DEFAULT FALSE,
     bot_html TEXT DEFAULT NULL,
+    custom_404_enabled BOOLEAN DEFAULT FALSE,
+    custom_404_html TEXT DEFAULT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

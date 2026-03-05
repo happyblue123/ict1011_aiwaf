@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   Globe,
   ShieldAlert,
@@ -78,6 +79,11 @@ export default function Overview() {
 
   useEffect(() => {
     fetchLogs();
+    
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchLogs, 30000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   // 2. Computed Metrics (KPIs)
@@ -149,12 +155,9 @@ export default function Overview() {
           <h2 className="text-2xl font-bold text-gray-800 tracking-tight">Security Overview</h2>
           <p className="text-sm text-gray-500">Real-time analysis from Neuro-WAF Engine</p>
         </div>
-        <button
-          onClick={fetchLogs}
-          className="flex items-center gap-2 text-sm bg-white border border-gray-200 px-3 py-1.5 rounded-lg text-gray-600 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
-        >
-          <RefreshCw size={14} /> Refresh Data
-        </button>
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <RefreshCw size={14} className="animate-spin" /> Auto-refreshing every 30s
+        </div>
       </div>
 
       {/* KPI CARDS */}
@@ -170,14 +173,14 @@ export default function Overview() {
           <div className="p-3 bg-blue-50 text-blue-600 rounded-lg"><Globe size={24} /></div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
+        <Link to="/events" state={{ actionFilter: 'BLOCKED' }} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between hover:shadow-md transition-shadow cursor-pointer">
           <div>
             <div className="text-xs font-bold text-gray-400 uppercase mb-1">Threats Blocked</div>
             <div className="text-3xl font-extrabold text-gray-800">{stats.blocked.toLocaleString()}</div>
             <div className="text-xs text-red-500 mt-2 font-medium">{stats.blockRate}% Block Rate</div>
           </div>
           <div className="p-3 bg-red-50 text-red-600 rounded-lg"><ShieldAlert size={24} /></div>
-        </div>
+        </Link>
 
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-start justify-between">
           <div>

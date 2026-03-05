@@ -45,6 +45,8 @@ const SettingsPage = () => {
   const [errorHtml, setErrorHtml] = useState('<h1>403 Forbidden</h1><p>Blocked by Neuro-WAF AI</p>');
   const [customBotEnabled, setCustomBotEnabled] = useState(false);
   const [botHtml, setBotHtml] = useState('<h1>Verifying...</h1><p>Please wait while we check your connection.</p>');
+  const [custom404Enabled, setCustom404Enabled] = useState(false);
+  const [custom404Html, setCustom404Html] = useState('<h1>404 Not Found</h1><p>The page you are looking for does not exist.</p>');
 
   // ── Auto Report State ───────────────────────────────
   const [reportEnabled, setReportEnabled] = useState(false);
@@ -81,6 +83,8 @@ const SettingsPage = () => {
         setErrorHtml(data.custom_pages?.error_html || '');
         setCustomBotEnabled(data.custom_pages?.bot_enabled ?? false);
         setBotHtml(data.custom_pages?.bot_html || '');
+        setCustom404Enabled(data.custom_pages?.custom_404_enabled ?? false);
+        setCustom404Html(data.custom_pages?.custom_404_html || '');
 
         // Load Report Settings (separate endpoint)
         try {
@@ -126,7 +130,9 @@ const SettingsPage = () => {
         error_enabled: customErrorEnabled,
         error_html: errorHtml,
         bot_enabled: customBotEnabled,
-        bot_html: botHtml
+        bot_html: botHtml,
+        custom_404_enabled: custom404Enabled,
+        custom_404_html: custom404Html
       }
     };
 
@@ -421,6 +427,25 @@ const SettingsPage = () => {
                     value={botHtml}
                     onChange={(e) => setBotHtml(e.target.value)}
                     placeholder="Enter custom HTML for bot verification pages..."
+                  />
+                )}
+              </div>
+
+              {/* 404 Not Found Template */}
+              <div className="p-4 border border-gray-100 rounded-lg bg-gray-50/50">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <FileCode size={18} className="text-yellow-500" />
+                    <h4 className="font-bold text-sm text-gray-800">404 Forbidden Template</h4>
+                  </div>
+                  <Toggle enabled={custom404Enabled} setEnabled={setCustom404Enabled} />
+                </div>
+                {custom404Enabled && (
+                  <textarea
+                    className="w-full h-32 p-3 text-xs font-mono border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={custom404Html}
+                    onChange={(e) => setCustom404Html(e.target.value)}
+                    placeholder="Enter custom HTML for 404 not found pages..."
                   />
                 )}
               </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap,
   BrainCircuit, Shield, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle,
@@ -270,6 +271,7 @@ const InspectorDrawer = ({ log, onClose, onFeedbackSaved }) => {
 };
 
 const EventsLog = () => {
+  const location = useLocation();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -292,7 +294,7 @@ const EventsLog = () => {
   // --- NEW: DYNAMIC FILTER OPTIONS ---
   // --- DYNAMIC FILTER OPTIONS WITH SAFE FALLBACKS ---
   const [dynamicFilters, setDynamicFilters] = useState({
-    attacks: ['None', 'sql_injection', 'xss', 'traversal', 'cmd_injection', 'generic_injection', 'geo_block', 'AI_ANOMALY', 'rate_limit'],
+    attacks: ['sql_injection', 'xss', 'traversal', 'cmd_injection', 'generic_injection', 'geo_block', 'AI_ANOMALY', 'rate_limit'],
     actions: ['BLOCKED', 'ALLOWED', 'FLAGGED'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     countries: ['Local', 'United States', 'Russia', 'China', 'Iran']
@@ -319,7 +321,7 @@ const EventsLog = () => {
   // SEARCH & FILTER STATES
   const [searchQuery, setSearchQuery] = useState('');
   const [attackTypeFilter, setAttackTypeFilter] = useState('all');
-  const [actionFilter, setActionFilter] = useState('all');
+  const [actionFilter, setActionFilter] = useState(location.state?.actionFilter || 'all');
   const [countryFilter, setCountryFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
   const [ipFilter, setIpFilter] = useState('');
@@ -746,7 +748,7 @@ const EventsLog = () => {
               <select value={attackTypeFilter} onChange={(e) => { setAttackTypeFilter(e.target.value); setCurrentPage(1); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="all">All Types</option>
                 {dynamicFilters.attacks.map(type => (
-                  <option key={type} value={type}>{type === 'None' ? 'Normal Traffic' : type}</option>
+                  <option key={type} value={type}>{type}</option>
                 ))}
               </select>
             </div>
@@ -992,7 +994,7 @@ const EventsLog = () => {
                   <option value="baseline_allow">Clean / Normal Traffic Only</option>
                   <option disabled>──────────</option>
                   {dynamicFilters.attacks.map(type => (
-                    <option key={type} value={type}>{type === 'None' ? 'Normal Traffic' : type}</option>
+                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>

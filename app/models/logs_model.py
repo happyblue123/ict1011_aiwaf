@@ -276,7 +276,7 @@ class LogsModel:
         for a in attacks:
             if not a.startswith("baseline_allow"):
                 clean_attacks.add(a)
-        attacks_list = ["None"] + sorted(list(clean_attacks))
+        attacks_list = sorted(list(clean_attacks))
 
         # Standardize Actions to match UI (BLOCK -> BLOCKED)
         clean_actions = set()
@@ -335,7 +335,7 @@ class LogsModel:
         for a in attacks:
             if not a.startswith("baseline_allow"):
                 clean_attacks.add(a)
-        attacks_list = ["None"] + sorted(list(clean_attacks))
+        attacks_list = sorted(list(clean_attacks))
 
         # Standardize Actions to match UI
         clean_actions = set()

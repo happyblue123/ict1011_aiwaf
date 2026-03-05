@@ -18,6 +18,8 @@ class _CustomPagesCache:
         self._error_html: str = ""
         self._bot_enabled: bool = False
         self._bot_html: str = ""
+        self._custom_404_enabled: bool = False
+        self._custom_404_html: str = ""
         self._last_refresh: float = 0.0
         self._lock = threading.Lock()
 
@@ -32,7 +34,7 @@ class _CustomPagesCache:
                 conn = get_conn()
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT error_enabled, error_html, bot_enabled, bot_html "
+                        "SELECT error_enabled, error_html, bot_enabled, bot_html, custom_404_enabled, custom_404_html "
                         "FROM waf_settings WHERE id = 1"
                     )
                     row = cur.fetchone()
@@ -41,6 +43,8 @@ class _CustomPagesCache:
                         self._error_html = row["error_html"] or ""
                         self._bot_enabled = bool(row["bot_enabled"])
                         self._bot_html = row["bot_html"] or ""
+                        self._custom_404_enabled = bool(row.get("custom_404_enabled", False))
+                        self._custom_404_html = row.get("custom_404_html", "") or ""
                 conn.close()
             except Exception:
                 pass  # keep stale values on DB error
@@ -65,6 +69,16 @@ class _CustomPagesCache:
     def bot_html(self) -> str:
         self._refresh_if_stale()
         return self._bot_html
+
+    @property
+    def custom_404_enabled(self) -> bool:
+        self._refresh_if_stale()
+        return self._custom_404_enabled
+
+    @property
+    def custom_404_html(self) -> str:
+        self._refresh_if_stale()
+        return self._custom_404_html
 
 
 custom_pages = _CustomPagesCache()

@@ -14,6 +14,32 @@ class PolicyController:
 
     @staticmethod
     def create_rule(payload: Dict[str, Any]) -> Dict[str, Any]:
+        # Before inserting, ensure there isn't already an active rule for this
+        # IP.  We guard against two problematic cases:
+        #   * duplicate entries on the same list (whitelist/blacklist)
+        #   * the IP already exists on the opposite list (cannot be both)
+        #
+        # `get_policy_for_ip` returns the highest‑priority active rule (whitelist
+        # takes precedence), or None if no non-expired rule exists.
+        existing = PolicyModel.get_policy_for_ip(payload.get("ip_address"))
+        if existing:
+            if existing.get("list_type") == payload.get("list_type"):
+                # same list – already present
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"IP {payload.get('ip_address')} is already added to the {existing.get('list_type')}.",
+                )
+            else:
+                # conflict between whitelist/blacklist
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"IP {payload.get('ip_address')} is already on the {existing.get('list_type')} and cannot be added to the {payload.get('list_type')}.",
+                )
+
         expires_at = payload.get("expires_at")
         if isinstance(expires_at, str) and expires_at:
             expires_at = datetime.fromisoformat(expires_at)

@@ -45,7 +45,17 @@ class PolicyModel:
         conn = get_conn()
         try:
             with conn.cursor() as cur:
-                cur.execute(sql, (list_type, ip_address, reason, created_by, expires_at))
+                try:
+                    cur.execute(sql, (list_type, ip_address, reason, created_by, expires_at))
+                except Exception as e:
+                    # if we added the unique index, a duplicate insert will raise
+                    # a pymysql.err.IntegrityError.  Propagate a clearer message.
+                    import pymysql
+
+                    if isinstance(e, pymysql.err.IntegrityError):
+                        # this should be caught earlier by controller, but just in case
+                        raise ValueError(f"duplicate rule for {ip_address} on {list_type}")
+                    raise
                 rule_id = cur.lastrowid
         finally:
             conn.close()

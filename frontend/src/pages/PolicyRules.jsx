@@ -15,7 +15,7 @@ const suggestions = [
     prefill: { list: "blacklist", reason: "Burst traffic quarantine (AI suggestion)", expires: "" },
   },
   {
-    title: "Trusted partner allowlist",
+    title: "Trusted partner Whitelist",
     description: "Whitelist vendor IPs and enforce a shorter rule expiry review cycle.",
     confidence: "Medium",
     impact: "Allowlist governance",
@@ -135,11 +135,26 @@ export default function PolicyRules() {
     if (!formValues.ip.trim()) {
       return;
     }
+
+    // prevent duplicates locally before hitting the API
+    const ipVal = formValues.ip.trim();
+    const otherList = activeList === "blacklist" ? "whitelist" : "blacklist";
+    if (entries[activeList].some((e) => e.ip === ipVal)) {
+      setErrorMessage(`IP ${ipVal} is already in the ${activeList}.`);
+      return;
+    }
+    if (entries[otherList].some((e) => e.ip === ipVal)) {
+      setErrorMessage(
+        `IP ${ipVal} is already in the ${otherList} and cannot be added to ${activeList}.`
+      );
+      return;
+    }
+
     setErrorMessage("");
 
     const payload = {
       list_type: activeList,
-      ip_address: formValues.ip.trim(),
+      ip_address: ipVal,
       reason: formValues.reason.trim() || "Manual entry",
       created_by: "Admin User",
       expires_at: formValues.expires.trim() || null,
@@ -151,9 +166,17 @@ export default function PolicyRules() {
       credentials: "include",
       body: JSON.stringify(payload),
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
-          throw new Error("Failed to add policy rule.");
+          // try to extract meaningful message from server
+          let msg = "Failed to add policy rule.";
+          try {
+            const err = await response.json();
+            if (err && err.detail) {
+              msg = err.detail;
+            }
+          } catch {}
+          throw new Error(msg);
         }
         return response.json();
       })
@@ -206,7 +229,7 @@ export default function PolicyRules() {
         <p className="text-sm font-semibold uppercase tracking-widest text-blue-500">
           Policy Rules
         </p>
-        <h1 className="text-3xl font-bold text-gray-900">IP Allowlist & Blocklist</h1>
+        <h1 className="text-3xl font-bold text-gray-900">IP Whitelist & Blocklist</h1>
         <p className="text-gray-500 max-w-2xl">
           Maintain trusted and blocked sources for instant enforcement. Pair manual rules with AI
           recommendations to keep malicious traffic out without hurting legitimate users.
@@ -222,7 +245,7 @@ export default function PolicyRules() {
         <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500">Allowlisted IPs</p>
+              <p className="text-sm font-medium text-gray-500">Whitelisted IPs</p>
               <p className="text-2xl font-bold text-gray-900">{summary.whitelist}</p>
             </div>
             <div className="rounded-full bg-emerald-100 p-3 text-emerald-600">
@@ -286,7 +309,7 @@ export default function PolicyRules() {
                       : "hover:text-gray-900"
                   }`}
                 >
-                  {listKey === "blacklist" ? "Blocklist" : "Allowlist"}
+                  {listKey === "blacklist" ? "Blocklist" : "Whitelist"}
                 </button>
               ))}
             </div>
