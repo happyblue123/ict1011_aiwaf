@@ -143,12 +143,6 @@ CREATE TABLE IF NOT EXISTS report_settings (
 INSERT INTO report_settings (id) VALUES (1)
 ON DUPLICATE KEY UPDATE id = id;
 
--- make sure any older databases get our new scheduling columns
-ALTER TABLE report_settings
-    ADD COLUMN IF NOT EXISTS schedule_time TIME DEFAULT '00:00',
-    ADD COLUMN IF NOT EXISTS schedule_dow TINYINT NULL,
-    ADD COLUMN IF NOT EXISTS schedule_dom TINYINT NULL;
-
 -- ==========================================
 -- 10. ANALYST FEEDBACK TABLE
 -- Human-in-the-loop learning: analysts mark

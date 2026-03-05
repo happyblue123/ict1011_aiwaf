@@ -1,7 +1,7 @@
 // src/components/common/Header.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, Bell, LogOut, X } from "lucide-react";
+import { Search, Bell, LogOut, X, RefreshCw } from "lucide-react";
 
 export default function Header() {
   const location = useLocation();
@@ -10,6 +10,8 @@ export default function Header() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastBlockCount, setLastBlockCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshIntervalRef = useRef(null);
 
   const getTitle = () => {
     switch (location.pathname) {
@@ -44,6 +46,7 @@ export default function Header() {
   useEffect(() => {
     const pollThreats = async () => {
       try {
+        setIsRefreshing(true);
         const res = await fetch("/api/get-overview?range=24h&recent_limit=50", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
@@ -71,6 +74,8 @@ export default function Header() {
         }
       } catch (error) {
         console.error("Failed to poll threats:", error);
+      } finally {
+        setIsRefreshing(false);
       }
     };
 
@@ -80,10 +85,49 @@ export default function Header() {
     }
 
     pollThreats();
-    const interval = setInterval(pollThreats, 30000); // Poll every 30 seconds
+    refreshIntervalRef.current = setInterval(pollThreats, 30000); // Poll every 30 seconds
 
-    return () => clearInterval(interval);
+    return () => {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    };
   }, [lastBlockCount]);
+
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return;
+    try {
+      setIsRefreshing(true);
+      const res = await fetch("/api/get-overview?range=24h&recent_limit=50", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        const recentEvents = data.recent_events || [];
+        const currentBlockCount = recentEvents.filter(event => event.raw_log?.decision?.action === "block").length;
+
+        if (currentBlockCount > lastBlockCount) {
+          const newBlocks = currentBlockCount - lastBlockCount;
+          const newNotification = {
+            id: Date.now(),
+            message: `${newBlocks} new threat${newBlocks > 1 ? 's' : ''} blocked`,
+            timestamp: new Date().toLocaleTimeString(),
+          };
+          setNotifications(prev => [newNotification, ...prev]);
+          setLastBlockCount(currentBlockCount);
+
+          // Browser notification if supported
+          if (Notification.permission === "granted") {
+            new Notification("Neuro-WAF Alert", {
+              body: newNotification.message,
+              icon: "/favicon.ico",
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to refresh notifications:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Close notifications dropdown when clicking outside
   useEffect(() => {
@@ -116,8 +160,9 @@ export default function Header() {
           <button
             onClick={toggleNotifications}
             className="relative p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
+            title="Notifications (Auto-refresh every 30s)"
           >
-            <Bell size={20} />
+            <Bell size={20} className={isRefreshing ? 'animate-pulse' : ''} />
             {notifications.length > 0 && (
               <span className="absolute top-1.5 right-2 h-2 w-2 bg-red-500 rounded-full border border-white"></span>
             )}
@@ -129,14 +174,24 @@ export default function Header() {
               <div className="p-4 border-b border-gray-200">
                 <div className="flex justify-between items-center">
                   <h3 className="text-sm font-semibold text-gray-800">Notifications</h3>
-                  {notifications.length > 0 && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={clearAllNotifications}
-                      className="text-xs text-blue-600 hover:text-blue-800"
+                      onClick={handleManualRefresh}
+                      disabled={isRefreshing}
+                      className="p-1 text-gray-500 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors disabled:opacity-50"
+                      title="Refresh now"
                     >
-                      Clear All
+                      <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
                     </button>
-                  )}
+                    {notifications.length > 0 && (
+                      <button
+                        onClick={clearAllNotifications}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="max-h-64 overflow-y-auto">
