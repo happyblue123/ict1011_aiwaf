@@ -1,6 +1,7 @@
 # app/db/db_bootstrap.py
 from __future__ import annotations
 from pathlib import Path
+import re
 import pymysql
 
 
@@ -46,7 +47,10 @@ def _connect_db(host: str, port: int, user: str, password: str, database: str):
 
 
 def _run_sql_statements(conn, sql: str) -> None:
-    statements = [s.strip() for s in sql.split(";") if s.strip()]
+    # Strip single-line comments so semicolons inside them
+    # don't break the naive split.
+    cleaned = re.sub(r'--.*$', '', sql, flags=re.MULTILINE)
+    statements = [s.strip() for s in cleaned.split(";") if s.strip()]
     with conn.cursor() as cur:
         for stmt in statements:
             cur.execute(stmt)
