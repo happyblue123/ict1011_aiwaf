@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import {
   RefreshCw, Eye, X, Server, ChevronLeft, ChevronRight, ShieldAlert, Clock, Calendar, Zap,
   BrainCircuit, Shield, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle,
-  Download, FileText, Filter, Mail, Loader2, ExternalLink, Search
+  Download, FileText, Filter, Loader2, ExternalLink, Search
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -335,8 +335,6 @@ const EventsLog = () => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportAttackFilter, setExportAttackFilter] = useState('ALL');
   const [isExporting, setIsExporting] = useState(false);
-  const [isEmailing, setIsEmailing] = useState(false);
-  const [emailMessage, setEmailMessage] = useState('');
 
   const liveIntervalRef = useRef(null);
 
@@ -627,25 +625,6 @@ const EventsLog = () => {
     }
   };
 
-  const handleEmailReport = async () => {
-    setIsEmailing(true);
-    setEmailMessage('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/report-settings/send`, { method: 'POST', credentials: 'include' });
-      const data = await res.json();
-      if (data.status === 'ok') {
-        setEmailMessage('Report emailed successfully!');
-      } else {
-        setEmailMessage(data.message || 'Failed — configure email in Settings first');
-      }
-      setTimeout(() => setEmailMessage(''), 5000);
-    } catch (err) {
-      setEmailMessage('Failed — configure email in Settings first');
-      setTimeout(() => setEmailMessage(''), 5000);
-    } finally {
-      setIsEmailing(false);
-    }
-  };
 
   useEffect(() => {
     const timer = setTimeout(() => fetchLogs(), 300);
@@ -999,22 +978,10 @@ const EventsLog = () => {
                 </select>
               </div>
 
-              <div className="flex gap-3">
-                <button onClick={handleExport} disabled={isExporting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
-                  {isExporting ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
-                  {isExporting ? 'Generating...' : 'Download PDF'}
-                </button>
-                <button onClick={handleEmailReport} disabled={isEmailing} className="flex-1 py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
-                  {isEmailing ? <Loader2 className="animate-spin" size={18} /> : <Mail size={18} />}
-                  {isEmailing ? 'Sending...' : 'Email Report'}
-                </button>
-              </div>
-
-              {emailMessage && (
-                <p className={`text-sm font-medium text-center p-2 rounded-lg ${emailMessage.includes('success') ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
-                  {emailMessage}
-                </p>
-              )}
+              <button onClick={handleExport} disabled={isExporting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2">
+                {isExporting ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
+                {isExporting ? 'Generating...' : 'Download PDF'}
+              </button>
             </div>
           </div>
         </div>
