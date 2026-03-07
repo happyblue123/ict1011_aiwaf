@@ -11,6 +11,7 @@ ae_model.keras
 ai_model.joblib
 request_classifier.pkl
 retrain_state.json
+port.json
 
 #Environment Variables
 .env

@@ -142,7 +142,8 @@ def setupdb(payload: SetupDBRequest):
             status_code=400,
             detail="Unable to connect to the database server. Please verify host and port."
         )
-    except DBSchemaError:
+    except DBSchemaError as e:
+        logger.exception("Schema setup failed")
         raise HTTPException(
             status_code=400,
             detail="Database schema setup failed. Please check your schema.sql file."
@@ -177,10 +178,14 @@ def generate_baseline(payload: GenerateBaselineRequest, request: Request):
 
     origin_url = f"{scheme}://{host}:{port}"
 
+    # Read actual proxy port from WAF config
+    waf_cfg = getattr(request.app.state, "waf_config", None)
+    waf_port = int(waf_cfg["proxy_port"]) if waf_cfg and waf_cfg.get("proxy_port") else 8080
+
     crawler = HybridCrawler(
         origin_url=origin_url,
-        # auth_info=auth_info,
         excluded_endpoints=payload.excluded_endpoints,
+        waf_port=waf_port,
     )
 
     ok = crawler.start()
@@ -226,6 +231,10 @@ def setupwaf(payload: SetupWAFRequest, request: Request):
 
     # 2) Refresh runtime WAF config
     request.app.state.waf_config = get_active_waf_config()
+
+    # 3) Write port.json so the supervisor auto-restarts on the new port
+    port_file = Path(__file__).resolve().parent.parent.parent / "port.json"
+    port_file.write_text(json.dumps({"port": payload.proxy_port}))
 
     return {
         "status": "ok",

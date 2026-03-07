@@ -200,6 +200,31 @@ const WAFSetup = ({ onComplete }) => {
 
       if (data?.instance_id) setWafInstanceId(data.instance_id);
 
+      // Wait for server to restart on the new port
+      const maxWait = 15000;
+      const interval = 1000;
+      const startTime = Date.now();
+      let serverReady = false;
+
+      while (Date.now() - startTime < maxWait) {
+        await new Promise((r) => setTimeout(r, interval));
+        try {
+          const check = await fetch(`${API_BASE_URL}/auth/check`, {
+            credentials: "include",
+          });
+          if (check.ok || check.status === 401) {
+            serverReady = true;
+            break;
+          }
+        } catch {
+          // Server still restarting
+        }
+      }
+
+      if (!serverReady) {
+        throw new Error("Server is restarting. Please refresh the page.");
+      }
+
       setStep(3);
     } catch (e) {
       setError(e?.message || "Setup WAF failed");

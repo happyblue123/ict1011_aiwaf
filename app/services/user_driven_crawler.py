@@ -6,8 +6,8 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from playwright.sync_api import sync_playwright
 
 class HybridCrawler:
-    def __init__(self, origin_url, excluded_endpoints=None):
-        self.base_url = self.to_waf_url(origin_url, 8080)
+    def __init__(self, origin_url, excluded_endpoints=None, waf_port=8080):
+        self.base_url = self.to_waf_url(origin_url, waf_port)
         parsed = urlparse(self.base_url)
         self.scope = parsed.netloc
         
