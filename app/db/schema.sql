@@ -3,12 +3,11 @@
 -- Will NOT drop tables or delete data.
 -- ==========================================
 -- DROP DATABASE neurowaf_db;
-CREATE DATABASE IF NOT EXISTS neurowaf_db
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
+ CREATE DATABASE IF NOT EXISTS neurowaf_db
+   CHARACTER SET utf8mb4
+   COLLATE utf8mb4_unicode_ci;
 
 USE neurowaf_db;
-
 -- ==========================================
 -- 1. WAF INSTANCES TABLE (PARENT)
 -- ==========================================
@@ -61,7 +60,7 @@ CREATE TABLE IF NOT EXISTS ip_policy_rules (
     INDEX idx_ip_policy_list (list_type),
     -- enforce at the database level that a given IP can only appear once
     -- per list_type.  existing installations will need to run an ALTER
-    -- table manually if duplicates already exist; for new databases the
+    -- table manually if duplicates already exist. For new databases the
     -- constraint is created automatically.
     UNIQUE KEY uniq_ip_policy (ip_address, list_type)
 ) ENGINE=InnoDB;
